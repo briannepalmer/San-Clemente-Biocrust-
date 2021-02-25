@@ -1,0 +1,191 @@
+---
+title: "Biocrust Microbial Taxa"
+author: "Brianne"
+date: "2/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load libraries}
+library(tidyverse)
+library(MASS)
+library(lme4)
+library(car)
+library(emmeans)
+library(multcomp)
+library(ggpubr)
+library(rcompanion)
+library(calecopal)
+library(MuMIn)
+library(vegan)
+library(pairwiseAdonis)
+```
+
+```{r microbial community}
+
+all.taxa <- read.csv("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/data/taxon_rel_abund_edited_Feb2021.csv")
+
+genus <- all.taxa %>%  dplyr::select(genus, X1:X24)
+head(genus)
+
+genus <- aggregate(. ~ genus, transform(genus, genus = genus), sum)
+
+# The first column is actually the row names
+rownames(genus) <- genus$genus
+genus$genus <- NULL
+head(genus)
+genus.transposed <- as.data.frame(t(as.matrix(genus)))
+rownames(genus.transposed) <- colnames(genus)
+colnames(genus.transposed) <- rownames(genus)
+
+metadata <- read.csv("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/data/metadata.csv")
+metadata <- metadata[c(1:24),]
+genus.all <- as.data.frame(c(metadata, genus.transposed))
+genus.all <- genus.all %>% rename(Sample = ï..Sample)
+bsc <- genus.all
+
+```
+
+```{r all genera}
+genus.only <- genus.all[,-c(1:90)]
+genus.sums.long <- gather(genus.only, genus, n, 1:940)
+sum_genus <- aggregate(n ~ genus, data=genus.sums.long, sum)
+
+genera  <- sum_genus$genus [order (sum_genus$n, decreasing = TRUE)]
+
+genera.order <- subset(sum_genus, genus %in% genera[1:200])
+
+ggplot(data = genera.order, aes(x = reorder(genus,-n), y = n)) + geom_bar(stat = "identity", fill = "darkorchid4") + theme_bw() + coord_flip() + theme(legend.position = "none", axis.text.x = element_text(hjust = .9), text = element_text(size= 10)) + labs(x = "Abundance", y = "genus", title = "Top 200 genus")
+
+```
+
+This code will run a for loop to determine which genera varied with treatment. I haven't figure out how to do this in R yet but to figure out if there were any genera that differed, I called the list of genera with rownames(genera) then copired and pasted that and the p values from this fore loop into an excel sheet. Not very graceful, but it works..
+```{r}
+
+genus <- genus.all[c(91:1030)]
+genus[is.na(genus)] <- 0
+metadata <- genus.all[c(1:90)]
+
+for(genus in genus){
+  eq <- lm(genus ~ metadata$treatment)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+
+```
+
+
+```{r cyano}
+
+cyano <- all.taxa %>% filter(phylum == "Cyanobacteria") %>%  dplyr::select(genus, bsc1:bsc24)
+
+cyano <- aggregate(. ~ genus, transform(cyano, genus = genus), sum)
+
+# The first column is actually the row names
+rownames(cyano) <- cyano$genus
+cyano$genus <- NULL
+cyano.transposed <- as.data.frame(t(as.matrix(cyano)))
+rownames(cyano.transposed) <- colnames(cyano)
+colnames(cyano.transposed) <- rownames(cyano)
+
+metadata <- metadata[c(1:24),]
+cyano.all <- as.data.frame(c(metadata, cyano.transposed))
+cyano.all <- genus.all %>% rename(Sample = ï..Sample)
+
+genus <- cyano.all[c(91:113)]
+genus[is.na(genus)] <- 0
+metadata <- cyano.all[c(1:90)]
+
+for(genus in genus){
+  eq <- lm(genus ~ metadata$treatment)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+cyano.pge <- cyano.all %>% filter(site == "pge")
+genus <- cyano.pge[c(91:113)]
+genus[is.na(genus)] <- 0
+metadata <- cyano.pge[c(1:90)]
+                      
+for(genus in genus){
+  eq <- lm(genus ~ metadata$treatment)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+cyano.pgw <- cyano.all %>% filter(site == "pgw")
+genus <- cyano.pgw[c(91:113)]
+genus[is.na(genus)] <- 0
+metadata <- cyano.pgw[c(1:90)]
+                      
+for(genus in genus){
+  eq <- lm(genus ~ metadata$treatment)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+cyano.rc <- cyano.all %>% filter(site == "rc")
+genus <- cyano.rc[c(91:113)]
+genus[is.na(genus)] <- 0
+metadata <- cyano.rc[c(1:90)]
+                      
+for(genus in genus){
+  eq <- lm(genus ~ metadata$treatment)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+genus <- cyano.all[c(91:113)]
+genus[is.na(genus)] <- 0
+metadata <- cyano.all[c(1:90)]
+
+for(genus in genus){
+  eq <- lm(genus ~ metadata$site)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+
+```
+
+
+```{r microbial commmunity nmds}
+
+genus.only <- genus.all[-c(1:90)]
+
+genus.nmds <- metaMDS(genus.only, trace = FALSE, trymax=100, "bray")
+genus.nmds$stress 
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = genus.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = genus.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+metadata$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$treatment, site = metadata$site, FireType = metadata$FireType) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+
+# make the NMDS plot
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = site)) + geom_point() + 
+  stat_ellipse() + theme_bw()
+
+# determine if the differene is significant by doing a PERMANOVA
+adonis(genus.only ~ FireType, metadata) 
+
+pairwise.adonis(genus.only,factors=metadata$FireType)
+pairwise.adonis(genus.only,factors=metadata$treatment)
+pairwise.adonis(genus.only,factors=metadata$site)
+
+env <- metadata[c(7:90)]
+
+env.fit <- envfit(genus.nmds,env , permutations = 999, na.rm = TRUE)
+
+env.fit$vectors
+
+```
