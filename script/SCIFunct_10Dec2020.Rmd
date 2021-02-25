@@ -1,0 +1,1396 @@
+---
+title: "SCI_function_09Dec2020"
+author: "Brianne"
+date: "12/9/2020"
+output: html_document
+---
+
+```{r load libraries}
+library(tidyverse)
+library(MASS)
+library(lme4)
+library(car)
+library(emmeans)
+library(multcomp)
+library(ggpubr)
+library(rcompanion)
+library(calecopal)
+library(MuMIn)
+library(vegan)
+library(randomForest)
+library(predictmeans)
+```
+
+
+```{r load data}
+macro <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/data/sci_bsc_18_19_20.csv")
+
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+
+chl <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/data/chl_2019.csv")
+
+nfix <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/data/nifx_all_Dec2020_update.csv")
+
+eps <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/data/eps_July2020.csv")
+
+bsc.funct <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/sci_function_rel_abund.csv")
+
+bsc.level3 <- bsc.funct %>%  dplyr::select(level3, pgeb.1:rcc.4)
+bsc.level3  <- aggregate(. ~ level3, transform(bsc.level3, level3 = level3), sum)
+rownames(bsc.level3) <- bsc.level3$level3
+bsc.level3$level3 <- NULL
+bsc.level3.transposed <- as.data.frame(t(as.matrix(bsc.level3)))
+rownames(bsc.level3.transposed) <- colnames(bsc.level3)
+colnames(bsc.level3.transposed) <- rownames(bsc.level3)
+metadata <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/metadata.csv")
+metadata <- metadata[c(1:24),]
+bsc.level3.all <- as.data.frame(c(metadata, bsc.level3.transposed))
+bsc.level3.all <- bsc.level3.all %>% rename(Sample = ï..Sample)
+
+
+bulk.funct <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/ben_function_rel_abund.csv")
+bulk.level3 <- bulk.funct %>%  dplyr::select(level3, pge01b:pgw10c)
+bulk.level3  <- aggregate(. ~ level3, transform(bulk.level3, level3 = level3), sum)
+rownames(bulk.level3) <- bulk.level3$level3
+bulk.level3$level3 <- NULL
+bulk.level3.transposed <- as.data.frame(t(as.matrix(bulk.level3)))
+rownames(bulk.level3.transposed) <- colnames(bulk.level3)
+colnames(bulk.level3.transposed) <- rownames(bulk.level3)
+bulk.metadata <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/metadata_bulk.csv")
+bulk.metadata <- bulk.metadata %>% filter(year == "2018")
+bulk.level3.all <- as.data.frame(c(bulk.metadata, bulk.level3.transposed))
+bulk.level3.all <- bulk.level3.all %>% rename(Sample = ï..Sample)
+
+```
+
+```{r chl model}
+chl$site <- chl$ï..site
+chl$year <- as.factor(chl$year)
+
+boxplot.stats(chl$chl_total_mg_per_g)$out
+# remove outliers 
+
+chl.rm.out <- chl[-c(95,107,104,76,112,121),]
+
+chl.mod <- lmer(chl_total_mg_per_g ~ site + fire.type + year + (1|ID), data = chl.rm.out)
+residplot(chl.mod)
+Anova(chl.mod)
+
+summary(glht(chl.mod, linfct = mcp(site = "Tukey"))) # less chlorophyll in 2019 compared to 2018
+summary(glht(chl.mod, linfct = mcp(year = "Tukey"))) # less chlorophyll in 2019 compared to 2018
+summary(glht(chl.mod, linfct = mcp(fire.type = "Tukey"))) # less chlorophyll in 2019 compared to 2018
+
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+
+chl_summary <- data_summary(chl.rm.out, varname="chl_total_mg_per_g", 
+                    groupnames=c("site", "treatment", "year"))
+
+ggplot(chl, aes(x = as.factor(year), y = chl_total_mg_per_g, fill = fire.type)) + geom_boxplot()+ facet_grid(site ~ fire.type) + theme_bw()
+
+chl$year <- as.numeric(chl$year)
+
+ggplot(chl_summary, aes(x=year, y=chl_total_mg_per_g, group=fire.type, color=fire.type)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(site ~ fire.type) + theme(legend.position = "none")
+
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid.pdf", width = 8, height = 4)
+ggplot(chl_summary, aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(site ~ treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid_pge.pdf", width = 8, height = 4)
+ggplot(chl_summary %>% filter(site == "pge"), aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid_pgw.pdf", width = 8, height = 4)
+ggplot(chl_summary %>% filter(site == "pgw"), aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid_rc.pdf", width = 8, height = 4)
+ggplot(chl_summary %>% filter(site == "rc"), aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid.pdf", width = 8, height = 4)
+ggplot(chl_summary, aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(site ~ treatment) + theme(legend.position = "none")
+dev.off()
+```
+
+```{r eps model}
+
+eps$Year <- as.factor(eps$Year)
+eps.mod <- lmer(Conc_mg_g ~ Site + Year + FireType + (1|BSC_ID), data = eps)
+residplot(eps.mod)
+Anova(eps.mod)
+
+
+summary(glht(eps.mod, linfct = mcp(Site = "Tukey"))) 
+summary(glht(eps.mod, linfct = mcp(FireType = "Tukey"))) 
+summary(glht(eps.mod, linfct = mcp(Year = "Tukey"))) 
+
+eps_summary <- data_summary(eps, varname="Conc_mg_g", 
+                    groupnames=c("Site", "Treatment", "Year"))
+
+ggplot(eps, aes(x = as.factor(Year), y = Conc_mg_g, fill = FireType)) + geom_boxplot()+ facet_grid(Site ~ FireType) + theme_bw()
+
+eps_summary$Year <- as.factor(eps_summary$Year)
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid.pdf", width = 8, height = 4)
+ggplot(eps_summary, aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid_pge.pdf", width = 8, height = 4)
+ggplot(eps_summary %>% filter(Site == "PGE"), aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid_pgw.pdf", width = 8, height = 4)
+ggplot(eps_summary %>% filter(Site == "PGW"), aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid_rc.pdf", width = 8, height = 4)
+ggplot(eps_summary %>% filter(Site == "RC"), aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid.pdf", width = 8, height = 4)
+ggplot(eps_summary, aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(Site ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+```
+
+```{r nfix model}
+
+nfix$Year<- as.factor(nfix$Year)
+nfix$ID <- nfix$ï..Identifier.1
+nfix$Site <- as.factor(nfix$Site)
+nfix$FireType <- as.factor(nfix$FireType)
+#nfix$Type <- as.factor(nfix$Type)
+boxplot.stats(nfix$shift)$out
+nfix.no.out <- nfix[-c(25,60),]
+
+nfix.mod <- glm(shift ~ Site+Year+FireType, data = nfix.no.out)
+residplot(nfix.mod)
+Anova(nfix.mod) # difference between year 
+
+summary(glht(nfix.mod, linfct = mcp(Site = "Tukey"))) 
+summary(glht(nfix.mod, linfct = mcp(FireType = "Tukey"))) 
+summary(glht(nfix.mod, linfct = mcp(Year = "Tukey")))
+
+
+
+boxplot.stats(nfix$shift_CN)$out
+# remove outliers 
+cn_shift <- nfix[-c(25,16, 34,37,60),]
+
+CN.mod <- glm(shift_CN ~ Site+Year+FireType, data = cn_shift)
+residplot(CN.mod)
+Anova(CN.mod)
+
+summary(glht(CN.mod, linfct = mcp(Site = "Tukey"))) 
+summary(glht(CN.mod, linfct = mcp(FireType = "Tukey"))) 
+summary(glht(CN.mod, linfct = mcp(Year = "Tukey")))
+
+
+boxplot.stats(nfix$shift_N)$out
+# remove outliers 
+n_shift <- nfix[-c(10,37,14,11,36, 16,50),]
+N.mod <- glm(shift_N ~ Site+Year+FireType , data = n_shift)
+residplot(N.mod)
+Anova(N.mod)
+
+summary(glht(N.mod, linfct = mcp(Site = "Tukey"))) 
+summary(glht(N.mod, linfct = mcp(FireType = "Tukey"))) 
+summary(glht(N.mod, linfct = mcp(Year = "Tukey")))
+
+boxplot.stats(nfix$shift_C)$out
+# remove outliers 
+c_shift <- nfix[-c(25,13,49),]
+c_shift$Treatment <- as.factor(c_shift$Treatment)
+C.mod <- glm(shift_C ~ Site + Year + FireType , data = c_shift)
+residplot(C.mod)
+Anova(C.mod)
+
+summary(glht(C.mod, linfct = mcp(Site = "Tukey"))) 
+summary(glht(C.mod, linfct = mcp(FireType = "Tukey"))) 
+summary(glht(C.mod, linfct = mcp(Year = "Tukey")))
+
+
+
+ggplot(data = nfix.no.out, aes(x = FireType, y = shift, fill = FireType)) + geom_boxplot() + theme_bw() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ facet_grid(Year~Site) + geom_hline(yintercept=0, linetype="dashed") + geom_point()
+
+nifx_summary <- data_summary(nfix.no.out, varname="shift", 
+                    groupnames=c("Site", "Treatment", "Year"))
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid.pdf", width = 8, height = 4)
+ggplot(data=data_summary(nfix.no.out, varname="shift", 
+                    groupnames=c("Site", "Treatment", "Year")), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid_pge.pdf", width = 8, height = 4)
+ggplot(data=data_summary(nfix.no.out, varname="shift", 
+                    groupnames=c("Site", "Treatment", "Year")) %>% filter(Site == "PGE"), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
+dev.off()
+
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid_pgw.pdf", width = 8, height = 4)
+ggplot(data=data_summary(nfix.no.out, varname="shift", 
+                    groupnames=c("Site", "Treatment", "Year")) %>% filter(Site == "PGW"), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid_rc.pdf", width = 8, height = 4)
+ggplot(data=data_summary(nfix.no.out, varname="shift", 
+                    groupnames=c("Site", "Treatment", "Year")) %>% filter(Site == "RC"), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
+dev.off()
+
+
+
+c_shift_summary <- data_summary(c_shift, varname="shift_C", 
+                    groupnames=c("Site", "Treatment", "Year"))
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid.pdf", width = 8, height = 4)
+ggplot(data=c_shift_summary, aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid_pge.pdf", width = 8, height = 4)
+ggplot(data=c_shift_summary %>% filter(Site == "PGE"), aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid_pgw.pdf", width = 8, height = 4)
+ggplot(data=c_shift_summary %>% filter(Site == "PGW"), aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid_rc.pdf", width = 8, height = 4)
+ggplot(data=c_shift_summary %>% filter(Site == "RC"), aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/nfix_grid.pdf", width = 8, height = 4)
+ggplot(data=data_summary(nfix.no.out, varname="shift", 
+                    groupnames=c("Site", "Treatment", "Year")), aes(x=Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(Site ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid.pdf", width = 8, height = 4)
+ggplot(data=c_shift_summary, aes(x=Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(Site ~ Treatment) + theme(legend.position = "none")
+dev.off()
+
+
+```
+
+```{r combine datasets}
+
+chl_short <- chl %>% dplyr::select(year, site, fire.type, chl_total_mg_per_g, treatment) %>% group_by(year,fire.type, site) %>% summarize_at(vars(chl_total_mg_per_g),list(mean = mean))
+chl_short<- chl_short %>% dplyr::rename(total_chl = mean)
+eps_short <- eps %>% group_by(Site, Year, FireType) %>% summarize_at(vars(Conc_mg_g),list(mean = mean))
+eps_short<- eps_short %>% dplyr::rename(total_eps = mean, site = Site, year = Year, fire.type = FireType)
+eps_short <- eps_short[-12,]
+nfix_short <- nfix %>% group_by(FireType, Year, Site)%>% summarize_at(vars(X.N:N_uptake),list(mean = mean))
+nfix_short <- nfix_short[-12,]
+nfix_short<- nfix_short %>% dplyr::rename(fire.type = FireType, year = Year, site = Site)
+macro_short <- macro %>% group_by(Site, Treatment, Sample.Year) %>% summarize_at(vars(cyano:Total),list(mean = mean)) %>% filter(Sample.Year != "2020", Treatment != "rx/treatment")
+macro_short <- macro_short %>% dplyr::rename(fire.type = Treatment, year = Sample.Year, site = Site)
+
+labfunct <- merge(macro_short, chl_short, by = c ("site", "year"))
+labfunct <- merge(labfunct, eps_short, by = c("year"))
+labfunct <- merge(labfunct, nfix_short, by = c("year"))
+
+labfunct <- labfunct[-c(2,9,11,12,14)]
+labfunct <- labfunct %>% dplyr::rename(fire.type = fire.type.x)
+
+
+labfunct <- data.frame(macro_short, chl_short, eps_short, nfix_short)
+labfunct <- labfunct[-c(9:11,13:15,17:19)]
+
+ggplot(labfunct, aes(x=Moss_mean, y=total_chl)) + geom_point() + geom_smooth(method = 'glm')
+
+
+```
+
+Do these measured functions correlate with biocrust cover measured in the field 
+
+```{r}
+
+chl.macro.mod <- glm(Total_mean ~ total_chl, data = labfunct)
+Anova(chl.macro.mod)
+
+eps.macro.mod <- glm(Total_mean ~ total_eps, data = labfunct)
+Anova(eps.macro.mod)
+
+nfix.macro.mod <- glm(Total_mean ~ N_uptake_mean, data = labfunct)
+Anova(nfix.macro.mod)
+
+N.macro.mod <- glm(Total_mean ~ X.N_mean, data = labfunct)
+Anova(N.macro.mod)
+
+C.macro.mod <- glm(Total_mean ~ X.C_mean, data = labfunct)
+Anova(C.macro.mod)
+
+CN.macro.mod <- glm(Total_mean ~ C.N_mean, data = labfunct)
+Anova(CN.macro.mod)
+
+```
+There is no relationship between lab measured traits and total biocrust cover 
+
+```{r nmds function}
+level3.only <- bsc.level3.all[-c(1:90)]
+level3.nmds <- metaMDS(level3.only, trace = FALSE, trymax = 100, "bray")
+level3.nmds$stress
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = level3.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = level3.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+metadata$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$treatment, site = metadata$site, FireType = metadata$FireType) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+
+# make the NMDS plot
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
+  stat_ellipse() + theme_bw()
+
+# determine if the differene is significant by doing a PERMANOVA
+adonis(level3.only ~ FireType, metadata) 
+
+library(pairwiseAdonis)
+
+pairwise.adonis(level3.only,factors=metadata$FireType)
+pairwise.adonis(level3.only,factors=metadata$treatment)
+pairwise.adonis(level3.only,factors=metadata$site)
+
+env <- metadata[c(7:90)]
+
+env.fit <- envfit(level3.nmds,env , permutations = 999, na.rm = TRUE)
+
+env.fit$vectors # nothing was significant 
+
+
+```
+
+
+```{r}
+
+for(level3 in level3.only[1:500]){
+  eq <- lm(level3 ~ metadata$FireType)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+for(level3 in level3.only[501:1061]){
+  eq <- lm(level3 ~ metadata$FireType)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+
+colnames(level3.only)[501:1061]
+
+```
+
+```{r}
+
+bsc.level3.all$fire.type <- metadata$FireType
+ggplot(bsc.level3.all, aes(x = fire.type, y = Nitrogen_fixation, fill = fire.type)) + geom_boxplot()+ theme_bw()
+
+bsc.level3.all$fire.type <- as.factor(bsc.level3.all$fire.type)
+n.fix <- lm(Nitrogen_fixation ~ fire.type, data = bsc.level3.all)
+Anova(n.fix)
+plot(n.fix)
+summary(glht(n.fix, linfct = mcp(fire.type = "Tukey")))
+mu <- ddply(bsc.level3.all, "fire.type", summarise, grp.mean=mean(Nitrogen_fixation))
+ggplot(bsc.level3.all, aes(x = Nitrogen_fixation, fill= fire.type)) + geom_density(alpha=0.4)+
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=fire.type),
+             linetype="dashed") + theme_bw()
+
+
+ggplot(bsc.level3.all, aes(x = fire.type, y = Exopolysaccharide_Biosynthesis, fill = fire.type)) + geom_boxplot() + theme_bw()
+mu <- ddply(bsc.level3.all, "fire.type", summarise, grp.mean=mean(Exopolysaccharide_Biosynthesis))
+ggplot(bsc.level3.all, aes(x = Exopolysaccharide_Biosynthesis, fill = fire.type)) + geom_density(alpha=0.4)+
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=fire.type),
+             linetype="dashed") + theme_bw()
+
+eps.mod <- lm(Exopolysaccharide_Biosynthesis ~ fire.type, data = bsc.level3.all)
+Anova(eps.mod)
+summary(glht(eps.mod, linfct = mcp(fire.type = "Tukey")))
+
+ggplot(bsc.level3.all, aes(x = fire.type, y = Chlorophyll_Biosynthesis, fill = fire.type)) + geom_boxplot()+ theme_bw() 
+
+
+ggplot(bsc.level3.all, aes(x = Chlorophyll_Biosynthesis, fill = fire.type)) + geom_density(alpha=0.4)
+
+chl.mod <- lm(Chlorophyll_Biosynthesis ~ fire.type, data = bsc.level3.all)
+summary(aov(chl.mod))
+summary(glht(chl.mod, linfct = mcp(fire.type = "Tukey")))
+
+mu <- ddply(bsc.level3.all, "fire.type", summarise, grp.mean=mean(Chlorophyll_Biosynthesis))
+ggplot(bsc.level3.all, aes(x = Chlorophyll_Biosynthesis, fill = fire.type)) + geom_density(alpha=0.4)+
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=fire.type),
+             linetype="dashed") + theme_bw()
+
+```
+
+Look at all the nitrogen genes 
+
+```{r}
+bsc.funct$level1 <- bsc.funct$ï..level1
+nitrogen.genes <- bsc.funct %>% filter(level1 == "Nitrogen Metabolism")
+
+nit.level3 <- nitrogen.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+nit.level3  <- aggregate(. ~ level3, transform(nit.level3 , level3 = level3), sum)
+rownames(nit.level3 ) <- nit.level3$level3
+nit.level3$level3 <- NULL
+nit.level3.transposed <- as.data.frame(t(as.matrix(nit.level3)))
+rownames(nit.level3.transposed) <- colnames(nit.level3)
+colnames(nit.level3.transposed) <- rownames(nit.level3)
+metadata <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/metadata.csv")
+metadata$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+metadata <- metadata[c(1:24),]
+nit.level3.all <- as.data.frame(c(metadata, nit.level3.transposed))
+nit.level3.all <- nit.level3.all %>% pivot_longer(cols = Allantoin_Utilization:Nitrosative_stress, names_to = "level3", values_to = "count")
+
+ggplot(data = nit.level3.all, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+
+carb.genes <- bsc.funct %>% filter(level1 == "Carbohydrates")
+
+carb.level3 <- carb.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+carb.level3  <- aggregate(. ~ level3, transform(carb.level3 , level3 = level3), sum)
+rownames(carb.level3 ) <- carb.level3$level3
+carb.level3$level3 <- NULL
+carb.level3.transposed <- as.data.frame(t(as.matrix(carb.level3)))
+rownames(carb.level3.transposed) <- colnames(carb.level3)
+colnames(carb.level3.transposed) <- rownames(carb.level3)
+carb.level3.all <- as.data.frame(c(metadata, carb.level3.transposed))
+carb.level3.all <- carb.level3.all %>% pivot_longer(cols = X.GlcNAc.2_Catabolic_Operon:Xylose_utilization, names_to = "level3", values_to = "count")
+
+ggplot(data = carb.level3.all, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+
+carb.level2 <- carb.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+carb.level2  <- aggregate(. ~ level2, transform(carb.level2 , level2 = level2), sum)
+rownames(carb.level2 ) <- carb.level2$level2
+carb.level2$level2 <- NULL
+carb.level2.transposed <- as.data.frame(t(as.matrix(carb.level2)))
+rownames(carb.level2.transposed) <- colnames(carb.level2)
+colnames(carb.level2.transposed) <- rownames(carb.level2)
+carb.level2.all <- as.data.frame(c(metadata, carb.level2.transposed))
+carb.level2.all <- carb.level2.all %>% pivot_longer(cols = Aminosugars:Sugar.alcohols, names_to = "level2", values_to = "count")
+
+ggplot(data = carb.level2.all, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+
+celldiv.genes <- bsc.funct %>% filter(level1 == "Cell Division and Cell Cycle")
+
+celldiv.level3 <- celldiv.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+celldiv.level3  <- aggregate(. ~ level3, transform(celldiv.level3 , level3 = level3), sum)
+rownames(celldiv.level3 ) <- celldiv.level3$level3
+celldiv.level3$level3 <- NULL
+celldiv.level3.transposed <- as.data.frame(t(as.matrix(celldiv.level3)))
+rownames(celldiv.level3.transposed) <- colnames(celldiv.level3)
+colnames(celldiv.level3.transposed) <- rownames(celldiv.level3)
+celldiv.level3.all <- as.data.frame(c(metadata, celldiv.level3.transposed))
+celldiv.level3.all.long <- celldiv.level3.all %>% pivot_longer(cols = Bacterial_Cytoskeleton:Two_cell_division_clusters_relating_to_chromosome_partitioning, names_to = "level3", values_to = "count")
+
+ggplot(data = celldiv.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+celldiv.level3.all$FireType <- as.factor(celldiv.level3.all$FireType)
+celldiv.level3.all$site <- as.factor(celldiv.level3.all$site)
+clock <- lm(log(Cyanobacterial_Circadian_Clock) ~ FireType + site, data = celldiv.level3.all)
+Anova(clock)
+hist(celldiv.level3.all$Cyanobacterial_Circadian_Clock)
+summary(glht(clock, linfct = mcp(site = "Tukey")))
+
+mu <- ddply(celldiv.level3.all, "FireType", summarise, grp.mean=mean(Cyanobacterial_Circadian_Clock))
+ggplot(celldiv.level3.all, aes(x = Cyanobacterial_Circadian_Clock, fill = FireType)) + geom_density(alpha=0.4)+
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=FireType),
+             linetype="dashed") + theme_bw()
+
+```
+
+```{r}
+
+cellwall.genes <- bsc.funct %>% filter(level1 == "Cell Wall and Capsule")
+
+cellwall.level3 <- cellwall.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+cellwall.level3  <- aggregate(. ~ level3, transform(cellwall.level3 , level3 = level3), sum)
+rownames(cellwall.level3 ) <- cellwall.level3$level3
+cellwall.level3$level3 <- NULL
+cellwall.level3.transposed <- as.data.frame(t(as.matrix(cellwall.level3)))
+rownames(cellwall.level3.transposed) <- colnames(cellwall.level3)
+colnames(cellwall.level3.transposed) <- rownames(cellwall.level3)
+cellwall.level3.all <- as.data.frame(c(metadata, cellwall.level3.transposed))
+cellwall.level3.all.long <- cellwall.level3.all %>% pivot_longer(cols = Alginate_metabolism:YjeE, names_to = "level3", values_to = "count")
+
+ggplot(data = cellwall.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+cellwall.level2 <- cellwall.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+cellwall.level2  <- aggregate(. ~ level2, transform(cellwall.level2 , level2 = level2), sum)
+rownames(cellwall.level2 ) <- cellwall.level2$level2
+cellwall.level2$level2 <- NULL
+cellwall.level2.transposed <- as.data.frame(t(as.matrix(cellwall.level2)))
+rownames(cellwall.level2.transposed) <- colnames(cellwall.level2)
+colnames(cellwall.level2.transposed) <- rownames(cellwall.level2)
+cellwall.level2.all <- as.data.frame(c(metadata, cellwall.level2.transposed))
+cellwall.level2.all.long <- cellwall.level2.all %>% pivot_longer(cols = Capsular.and.extracellular.polysacchrides:Gram.Positive.cell.wall.components, names_to = "level2", values_to = "count")
+
+ggplot(data = cellwall.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+
+```
+
+```{r}
+
+cvpp.genes <- bsc.funct %>% filter(level1 == "Cofactors, Vitamins, Prosthetic Groups, Pigments")
+
+cvpp.level3 <- cvpp.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+cvpp.level3  <- aggregate(. ~ level3, transform(cvpp.level3 , level3 = level3), sum)
+rownames(cvpp.level3 ) <- cvpp.level3$level3
+cvpp.level3$level3 <- NULL
+cvpp.level3.transposed <- as.data.frame(t(as.matrix(cvpp.level3)))
+rownames(cvpp.level3.transposed) <- colnames(cvpp.level3)
+colnames(cvpp.level3.transposed) <- rownames(cvpp.level3)
+cvpp.level3.all <- as.data.frame(c(metadata, cvpp.level3.transposed))
+cvpp.level3.all.long <- cvpp.level3.all %>% pivot_longer(cols = X5.FCL.like_protein:YgfZ.Iron, names_to = "level3", values_to = "count")
+
+ggplot(data = cvpp.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+cvpp.level2 <- cvpp.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+cvpp.level2  <- aggregate(. ~ level2, transform(cvpp.level2 , level2 = level2), sum)
+rownames(cvpp.level2 ) <- cvpp.level2$level2
+cvpp.level2$level2 <- NULL
+cvpp.level2.transposed <- as.data.frame(t(as.matrix(cvpp.level2)))
+rownames(cvpp.level2.transposed) <- colnames(cvpp.level2)
+colnames(cvpp.level2.transposed) <- rownames(cvpp.level2)
+cvpp.level2.all <- as.data.frame(c(metadata, cvpp.level2.transposed))
+cvpp.level2.all.long <- cvpp.level2.all %>% pivot_longer(cols = Biotin:Tetrapyrroles, names_to = "level2", values_to = "count")
+
+ggplot(data = cvpp.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+
+```{r}
+
+DNA.genes <- bsc.funct %>% filter(level1 == "DNA Metabolism")
+
+DNA.level3 <- DNA.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+DNA.level3  <- aggregate(. ~ level3, transform(DNA.level3 , level3 = level3), sum)
+rownames(DNA.level3 ) <- DNA.level3$level3
+DNA.level3$level3 <- NULL
+DNA.level3.transposed <- as.data.frame(t(as.matrix(DNA.level3)))
+rownames(DNA.level3.transposed) <- colnames(DNA.level3)
+colnames(DNA.level3.transposed) <- rownames(DNA.level3)
+DNA.level3.all <- as.data.frame(c(metadata, DNA.level3.transposed))
+DNA.level3.all.long <- DNA.level3.all %>% pivot_longer(cols = X2.phosphoglycolate_salvage:YcfH, names_to = "level3", values_to = "count")
+
+ggplot(data = DNA.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+DNA.level2 <- DNA.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+DNA.level2  <- aggregate(. ~ level2, transform(DNA.level2 , level2 = level2), sum)
+rownames(DNA.level2 ) <- DNA.level2$level2
+DNA.level2$level2 <- NULL
+DNA.level2.transposed <- as.data.frame(t(as.matrix(DNA.level2)))
+rownames(DNA.level2.transposed) <- colnames(DNA.level2)
+colnames(DNA.level2.transposed) <- rownames(DNA.level2)
+DNA.level2.all <- as.data.frame(c(metadata, DNA.level2.transposed))
+DNA.level2.all.long <- DNA.level2.all %>% pivot_longer(cols = CRISPs:DNA.uptake..competence, names_to = "level2", values_to = "count")
+
+ggplot(data = DNA.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+
+dormancy.genes <- bsc.funct %>% filter(level1 == "Dormancy and Sporulation")
+
+dormancy.level3 <- dormancy.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+dormancy.level3  <- aggregate(. ~ level3, transform(dormancy.level3 , level3 = level3), sum)
+rownames(dormancy.level3 ) <- dormancy.level3$level3
+dormancy.level3$level3 <- NULL
+dormancy.level3.transposed <- as.data.frame(t(as.matrix(dormancy.level3)))
+rownames(dormancy.level3.transposed) <- colnames(dormancy.level3)
+colnames(dormancy.level3.transposed) <- rownames(dormancy.level3)
+dormancy.level3.all <- as.data.frame(c(metadata, dormancy.level3.transposed))
+dormancy.level3.all.long <- dormancy.level3.all %>% pivot_longer(cols = Bacillus_biofilm_matrix_protein_component_TasA_and_homologs:SpoVS_protein_family, names_to = "level3", values_to = "count")
+
+ggplot(data = dormancy.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+spores <- lm(Spore_pigment_biosynthetic_cluster_in_Actinomycetes ~ FireType + site, data = dormancy.level3.all)
+Anova(spores)
+
+
+```
+
+```{r}
+motility.genes <- bsc.funct %>% filter(level1 == "Motility and Chemotaxis")
+
+motility.level3 <- motility.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+motility.level3  <- aggregate(. ~ level3, transform(motility.level3 , level3 = level3), sum)
+rownames(motility.level3 ) <- motility.level3$level3
+motility.level3$level3 <- NULL
+motility.level3.transposed <- as.data.frame(t(as.matrix(motility.level3)))
+rownames(motility.level3.transposed) <- colnames(motility.level3)
+colnames(motility.level3.transposed) <- rownames(motility.level3)
+motility.level3.all <- as.data.frame(c(metadata, motility.level3.transposed))
+motility.level3.all.long <- motility.level3.all %>% pivot_longer(cols = Archaeal_Flagellum:Rhamnolipids_in_Pseudomonas, names_to = "level3", values_to = "count")
+
+ggplot(data = motility.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+motility.level3.all$FireType <- as.factor(motility.level3.all$FireType)
+motility.level3.all$site <- as.factor(motility.level3.all$site)
+chemo <- lm(Bacterial_Chemotaxis ~ FireType + site, data = motility.level3.all)
+Anova(chemo)
+summary(glht(chemo, linfct = mcp(FireType = "Tukey")))
+
+mu <- ddply(motility.level3.all, "FireType", summarise, grp.mean=mean(Bacterial_Chemotaxis))
+ggplot(motility.level3.all, aes(x = Bacterial_Chemotaxis, fill = FireType)) + geom_density(alpha=0.4)+
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=FireType),
+             linetype="dashed") + theme_bw()
+
+```
+
+```{r}
+ppptep.genes <- bsc.funct %>% filter(level1 == "Phages, Prophages, Transposable elements, Plasmids")
+
+ppptep.level3 <- ppptep.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+ppptep.level3  <- aggregate(. ~ level3, transform(ppptep.level3 , level3 = level3), sum)
+rownames(ppptep.level3 ) <- ppptep.level3$level3
+ppptep.level3$level3 <- NULL
+ppptep.level3.transposed <- as.data.frame(t(as.matrix(ppptep.level3)))
+rownames(ppptep.level3.transposed) <- colnames(ppptep.level3)
+colnames(ppptep.level3.transposed) <- rownames(ppptep.level3)
+ppptep.level3.all <- as.data.frame(c(metadata, ppptep.level3.transposed))
+ppptep.level3.all.long <- ppptep.level3.all %>% pivot_longer(cols = CBSS.203122.12.peg.188:Vibrio_pathogenicity_island, names_to = "level3", values_to = "count")
+
+ggplot(data = ppptep.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+ppptep.level3.all$FireType <- as.factor(ppptep.level3.all$FireType)
+ppptep.level3.all$site <- as.factor(ppptep.level3.all$site)
+phage <- lm(Phage_capsid_proteins ~ FireType + site, data = ppptep.level3.all)
+Anova(phage)
+summary(glht(phage, linfct = mcp(FireType = "Tukey")))
+
+mu <- ddply(ppptep.level3.all, "FireType", summarise, grp.mean=mean(Phage_capsid_proteins))
+ggplot(ppptep.level3.all, aes(x = Phage_capsid_proteins, fill = FireType)) + geom_density(alpha=0.4)+
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=FireType),
+             linetype="dashed") + theme_bw()
+```
+
+```{r}
+
+photosynthesis.genes <- bsc.funct %>% filter(level1 == "Photosynthesis")
+
+photosynthesis.level3 <- photosynthesis.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+photosynthesis.level3  <- aggregate(. ~ level3, transform(photosynthesis.level3 , level3 = level3), sum)
+rownames(photosynthesis.level3 ) <- photosynthesis.level3$level3
+photosynthesis.level3$level3 <- NULL
+photosynthesis.level3.transposed <- as.data.frame(t(as.matrix(photosynthesis.level3)))
+rownames(photosynthesis.level3.transposed) <- colnames(photosynthesis.level3)
+colnames(photosynthesis.level3.transposed) <- rownames(photosynthesis.level3)
+photosynthesis.level3.all <- as.data.frame(c(metadata, photosynthesis.level3.transposed))
+photosynthesis.level3.all.long <- photosynthesis.level3.all %>% pivot_longer(cols = Bacterial_light.harvesting_proteins:Proteorhodopsin, names_to = "level3", values_to = "count")
+
+ggplot(data = photosynthesis.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+phosphorus.genes <- bsc.funct %>% filter(level1 == "Phosphorus Metabolism")
+
+phosphorus.level3 <- phosphorus.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+phosphorus.level3  <- aggregate(. ~ level3, transform(phosphorus.level3 , level3 = level3), sum)
+rownames(phosphorus.level3 ) <- phosphorus.level3$level3
+phosphorus.level3$level3 <- NULL
+phosphorus.level3.transposed <- as.data.frame(t(as.matrix(phosphorus.level3)))
+rownames(phosphorus.level3.transposed) <- colnames(phosphorus.level3)
+colnames(phosphorus.level3.transposed) <- rownames(phosphorus.level3)
+phosphorus.level3.all <- as.data.frame(c(metadata, phosphorus.level3.transposed))
+phosphorus.level3.all.long <- phosphorus.level3.all %>% pivot_longer(cols = Alkylphosphonate_utilization:Phosphate_metabolism, names_to = "level3", values_to = "count")
+
+ggplot(data = phosphorus.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+```
+
+```{r}
+potassium.genes <- bsc.funct %>% filter(level1 == "Potassium metabolism")
+
+potassium.level3 <- potassium.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+potassium.level3  <- aggregate(. ~ level3, transform(potassium.level3 , level3 = level3), sum)
+rownames(potassium.level3 ) <- potassium.level3$level3
+potassium.level3$level3 <- NULL
+potassium.level3.transposed <- as.data.frame(t(as.matrix(potassium.level3)))
+rownames(potassium.level3.transposed) <- colnames(potassium.level3)
+colnames(potassium.level3.transposed) <- rownames(potassium.level3)
+potassium.level3.all <- as.data.frame(c(metadata, potassium.level3.transposed))
+potassium.level3.all.long <- potassium.level3.all %>% pivot_longer(cols = Glutathione.regulated_potassium.efflux_system_and_associated_functions:Potassium_homeostasis, names_to = "level3", values_to = "count")
+
+ggplot(data = potassium.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+
+reg.genes <- bsc.funct %>% filter(level1 == "Regulation and Cell signaling")
+
+reg.level3 <- reg.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+reg.level3  <- aggregate(. ~ level3, transform(reg.level3 , level3 = level3), sum)
+rownames(reg.level3 ) <- reg.level3$level3
+reg.level3$level3 <- NULL
+reg.level3.transposed <- as.data.frame(t(as.matrix(reg.level3)))
+rownames(reg.level3.transposed) <- colnames(reg.level3)
+colnames(reg.level3.transposed) <- rownames(reg.level3)
+reg.level3.all <- as.data.frame(c(metadata, reg.level3.transposed))
+reg.level3.all.long <- reg.level3.all %>% pivot_longer(cols = A_conserved_operon_linked_to_TyrR_and_possibly_involved_in_virulence:WhiB_and_WhiB.type_regulatory_proteins_, names_to = "level3", values_to = "count")
+
+ggplot(data = reg.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+reg.level2 <- reg.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+reg.level2  <- aggregate(. ~ level2, transform(reg.level2 , level2 = level2), sum)
+rownames(reg.level2 ) <- reg.level2$level2
+reg.level2$level2 <- NULL
+reg.level2.transposed <- as.data.frame(t(as.matrix(reg.level2)))
+rownames(reg.level2.transposed) <- colnames(reg.level2)
+colnames(reg.level2.transposed) <- rownames(reg.level2)
+reg.level2.all <- as.data.frame(c(metadata, reg.level2.transposed))
+reg.level2.all.long <- reg.level2.all %>% pivot_longer(cols = NULL.:Signal.transduction.in.Eukaryotes, names_to = "level2", values_to = "count")
+
+ggplot(data = reg.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+resp.genes <- bsc.funct %>% filter(level1 == "Respiration")
+
+resp.level3 <- resp.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+resp.level3  <- aggregate(. ~ level3, transform(resp.level3 , level3 = level3), sum)
+rownames(resp.level3 ) <- resp.level3$level3
+resp.level3$level3 <- NULL
+resp.level3.transposed <- as.data.frame(t(as.matrix(resp.level3)))
+rownames(resp.level3.transposed) <- colnames(resp.level3)
+colnames(resp.level3.transposed) <- rownames(resp.level3)
+resp.level3.all <- as.data.frame(c(metadata, resp.level3.transposed))
+resp.level3.all.long <- resp.level3.all %>% pivot_longer(cols = Anaerobic_respiratory_reductases:V.Type_ATP_synthase, names_to = "level3", values_to = "count")
+
+ggplot(data = resp.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+resp.level2 <- resp.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+resp.level2  <- aggregate(. ~ level2, transform(resp.level2 , level2 = level2), sum)
+rownames(resp.level2 ) <- resp.level2$level2
+resp.level2$level2 <- NULL
+resp.level2.transposed <- as.data.frame(t(as.matrix(resp.level2)))
+rownames(resp.level2.transposed) <- colnames(resp.level2)
+colnames(resp.level2.transposed) <- rownames(resp.level2)
+resp.level2.all <- as.data.frame(c(metadata, resp.level2.transposed))
+resp.level2.all.long <- resp.level2.all %>% pivot_longer(cols = ATP.synthases:Sodium.Ion.Coupled.Energetics, names_to = "level2", values_to = "count")
+
+ggplot(data = resp.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+
+```
+
+```{r}
+rna.genes <- bsc.funct %>% filter(level1 == "RNA Metabolism")
+
+rna.level3 <- rna.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+rna.level3  <- aggregate(. ~ level3, transform(rna.level3 , level3 = level3), sum)
+rownames(rna.level3 ) <- rna.level3$level3
+rna.level3$level3 <- NULL
+rna.level3.transposed <- as.data.frame(t(as.matrix(rna.level3)))
+rownames(rna.level3.transposed) <- colnames(rna.level3)
+colnames(rna.level3.transposed) <- rownames(rna.level3)
+rna.level3.all <- as.data.frame(c(metadata, rna.level3.transposed))
+rna.level3.all.long <- rna.level3.all %>% pivot_longer(cols = X16S_rRNA_modification_within_P_site_of_ribosome:Wyeosine.MimG_Biosynthesis, names_to = "level3", values_to = "count")
+
+ggplot(data = rna.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+rna.level2 <- rna.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+rna.level2  <- aggregate(. ~ level2, transform(rna.level2 , level2 = level2), sum)
+rownames(rna.level2 ) <- rna.level2$level2
+rna.level2$level2 <- NULL
+rna.level2.transposed <- as.data.frame(t(as.matrix(rna.level2)))
+rownames(rna.level2.transposed) <- colnames(rna.level2)
+colnames(rna.level2.transposed) <- rownames(rna.level2)
+rna.level2.all <- as.data.frame(c(metadata, rna.level2.transposed))
+rna.level2.all.long <- rna.level2.all %>% pivot_longer(cols = NULL.:Transcription, names_to = "level2", values_to = "count")
+
+ggplot(data = rna.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+
+```
+
+```{r}
+stress.genes <- bsc.funct %>% filter(level1 == "Stress Response")
+
+stress.level3 <- stress.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+stress.level3  <- aggregate(. ~ level3, transform(stress.level3 , level3 = level3), sum)
+rownames(stress.level3 ) <- stress.level3$level3
+stress.level3$level3 <- NULL
+stress.level3.transposed <- as.data.frame(t(as.matrix(stress.level3)))
+rownames(stress.level3.transposed) <- colnames(stress.level3)
+colnames(stress.level3.transposed) <- rownames(stress.level3)
+stress.level3.all <- as.data.frame(c(metadata, stress.level3.transposed))
+stress.level3.all.long <- stress.level3.all %>% pivot_longer(cols = Acid_resistance_mechanisms:Uptake_of_selenate_and_selenite, names_to = "level3", values_to = "count")
+
+ggplot(data = stress.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+stress.level2 <- stress.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+stress.level2  <- aggregate(. ~ level2, transform(stress.level2 , level2 = level2), sum)
+rownames(stress.level2 ) <- stress.level2$level2
+stress.level2$level2 <- NULL
+stress.level2.transposed <- as.data.frame(t(as.matrix(stress.level2)))
+rownames(stress.level2.transposed) <- colnames(stress.level2)
+colnames(stress.level2.transposed) <- rownames(stress.level2)
+stress.level2.all <- as.data.frame(c(metadata, stress.level2.transposed))
+stress.level2.all.long <- stress.level2.all %>% pivot_longer(cols = Acid.stress:Periplasmic.Stress, names_to = "level2", values_to = "count")
+
+ggplot(data = stress.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+sulfur.genes <- bsc.funct %>% filter(level1 == "Sulfur Metabolism")
+
+sulfur.level3 <- sulfur.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+sulfur.level3  <- aggregate(. ~ level3, transform(sulfur.level3 , level3 = level3), sum)
+rownames(sulfur.level3 ) <- sulfur.level3$level3
+sulfur.level3$level3 <- NULL
+sulfur.level3.transposed <- as.data.frame(t(as.matrix(sulfur.level3)))
+rownames(sulfur.level3.transposed) <- colnames(sulfur.level3)
+colnames(sulfur.level3.transposed) <- rownames(sulfur.level3)
+sulfur.level3.all <- as.data.frame(c(metadata, sulfur.level3.transposed))
+sulfur.level3.all.long <- sulfur.level3.all %>% pivot_longer(cols = Alkanesulfonate_assimilation:Utilization_of_glutathione_as_a_sulphur_source, names_to = "level3", values_to = "count")
+
+ggplot(data = sulfur.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+sulfur.level2 <- sulfur.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+sulfur.level2  <- aggregate(. ~ level2, transform(sulfur.level2 , level2 = level2), sum)
+rownames(sulfur.level2 ) <- sulfur.level2$level2
+sulfur.level2$level2 <- NULL
+sulfur.level2.transposed <- as.data.frame(t(as.matrix(sulfur.level2)))
+rownames(sulfur.level2.transposed) <- colnames(sulfur.level2)
+colnames(sulfur.level2.transposed) <- rownames(sulfur.level2)
+sulfur.level2.all <- as.data.frame(c(metadata, sulfur.level2.transposed))
+sulfur.level2.all.long <- sulfur.level2.all %>% pivot_longer(cols = Inorganic.sulfur.assimilation:Organic.sulfur.assimilation, names_to = "level2", values_to = "count")
+
+ggplot(data = sulfur.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+vdd.genes <- bsc.funct %>% filter(level1 == "Virulence, Disease and Defense")
+
+vdd.level3 <- vdd.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+vdd.level3  <- aggregate(. ~ level3, transform(vdd.level3 , level3 = level3), sum)
+rownames(vdd.level3 ) <- vdd.level3$level3
+vdd.level3$level3 <- NULL
+vdd.level3.transposed <- as.data.frame(t(as.matrix(vdd.level3)))
+rownames(vdd.level3.transposed) <- colnames(vdd.level3)
+colnames(vdd.level3.transposed) <- rownames(vdd.level3)
+vdd.level3.all <- as.data.frame(c(metadata, vdd.level3.transposed))
+vdd.level3.all.long <- vdd.level3.all %>% pivot_longer(cols = Accessory_colonization_factor:Zinc_resistance, names_to = "level3", values_to = "count")
+
+ggplot(data = vdd.level3.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level3) + theme_bw()+ theme(legend.position = "none")
+
+vdd.level2 <- vdd.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+vdd.level2  <- aggregate(. ~ level2, transform(vdd.level2 , level2 = level2), sum)
+rownames(vdd.level2 ) <- vdd.level2$level2
+vdd.level2$level2 <- NULL
+vdd.level2.transposed <- as.data.frame(t(as.matrix(vdd.level2)))
+rownames(vdd.level2.transposed) <- colnames(vdd.level2)
+colnames(vdd.level2.transposed) <- rownames(vdd.level2)
+vdd.level2.all <- as.data.frame(c(metadata, vdd.level2.transposed))
+vdd.level2.all.long <- vdd.level2.all %>% pivot_longer(cols = Adhesion:Toxins.and.superantigens, names_to = "level2", values_to = "count")
+
+ggplot(data = vdd.level2.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level2) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+bsc.funct$level1 <- bsc.funct$ï..level1
+level1 <- bsc.funct %>%  dplyr::select(level1, pgeb.1:rcc.4)
+level1  <- aggregate(. ~ level1, transform(level1 , level1 = level1), sum)
+rownames(level1 ) <- level1$level1
+level1$level1 <- NULL
+level1.transposed <- as.data.frame(t(as.matrix(level1)))
+rownames(level1.transposed) <- colnames(level1)
+colnames(level1.transposed) <- rownames(level1)
+level1.all <- as.data.frame(c(metadata, level1.transposed))
+level1.all.long <- level1.all %>% pivot_longer(cols = Amino.Acids.and.Derivatives:Virulence..Disease.and.Defense, names_to = "level1", values_to = "count")
+
+ggplot(data = level1.all.long, aes(x = FireType, y = count, fill = FireType)) + geom_boxplot()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(.~level1) + theme_bw()+ theme(legend.position = "none")
+
+```
+
+```{r}
+detach(package:plyr)
+macro18.19 <- macro %>% filter(Sample.Year != "2020")
+macro18.19[is.na(macro18.19)] <- 0
+macro.short <- macro18.19 %>% group_by(Treatment, Sample.Year, Site) %>% summarize(total = mean(Total), cyano = mean(cyano), lichen = mean(Lichen), moss = mean(Moss)) 
+
+chl$Site <- chl$ï..site
+chl$Treatment <- chl$treatment
+chl$Sample.Year <- chl$year
+hist(chl$chl_total_mg_per_g)
+
+boxplot.stats(chl$chl_total_mg_per_g)$out # remove values greater than 33.5
+chl.out <- chl %>% filter(chl_total_mg_per_g < 33.59)
+chl.short <- chl.out %>%  group_by(Site, Treatment, Sample.Year) %>% summarize(total_chl = mean(chl_total_mg_per_g)) # missing pge control 2018 which are the samples I plan to redo
+chl.short$Treatment <- c("rx", "rx", "none", "none","rx", "rx", "none", "none" ,"wild", "wild", "none", "none")
+
+chl.macro <- merge(macro.short[-c(11,12),], chl.short[-10,], by = c("Treatment", "Site", "Sample.Year"))
+chlmacromod <- lm(log(total+1) ~ total_chl, data = chl.macro)
+par(mfrow=c(2,2))
+plot(chlmacromod)
+Anova(chlmacromod) 
+chlmacromod.cyano <- lm(log(cyano+1) ~ total_chl, data = chl.macro)
+par(mfrow=c(2,2))
+plot(chlmacromod.cyano)
+Anova(chlmacromod.cyano)
+chlmacromod.lichen <- lm(log(lichen+1) ~ total_chl, data = chl.macro)
+par(mfrow=c(2,2))
+plot(chlmacromod.lichen)
+Anova(chlmacromod.lichen)
+chlmacromod.moss <- lm(log(moss+1) ~ total_chl, data = chl.macro)
+par(mfrow=c(2,2))
+plot(chlmacromod.moss)
+Anova(chlmacromod.moss)
+
+formula <- chl.macro$total_chl ~ log(chl.macro$total+1)
+total <- ggplot(chl.macro, aes(x = total, y = total_chl)) + geom_point() + theme_bw()  + scale_x_log10() + geom_smooth(method = "glm") + annotation_logticks(sides = "b") + stat_regline_equation(formula = formula,label.x=0, label.y = 15) + stat_cor(formula = formula, label.x = 0, label.y = 14)  + theme(text = element_text(size=3)) + theme_bw()
+
+formula <- chl.macro$total_chl ~ log(chl.macro$cyano+1)
+cyano <- ggplot(chl.macro, aes(x = cyano, y = total_chl)) + geom_point() + theme_bw()  + scale_x_log10() + geom_smooth(method = "glm") + annotation_logticks(sides ="b") + stat_regline_equation(formula = formula,label.x=0, label.y = 15 ) + stat_cor(label.x =0, label.y = 14) + theme(text = element_text(size=3)) + theme_bw()
+
+formula <- chl.macro$total_chl ~ log(chl.macro$lichen+1)
+lichen <- ggplot(chl.macro, aes(x = lichen, y = total_chl)) + geom_point() + theme_bw()  + scale_x_log10() + geom_smooth(method = "glm") + annotation_logticks(sides = "b") + stat_regline_equation(formula = formula,label.x= -0.1, label.y = 15 ) + stat_cor(label.x = 0, label.y = 14) + theme(text = element_text(size=3)) + theme_bw()
+
+formula <- chl.macro$total_chl ~ log(chl.macro$moss+1)
+moss <- ggplot(chl.macro, aes(x = moss, y = total_chl)) + geom_point() + theme_bw()  + scale_x_log10() + geom_smooth(method = "glm") + annotation_logticks(sides = "b") + stat_regline_equation(formula = formula,label.x=-0.1, label.y = 15 ) + stat_cor(label.x = 0, label.y = 14) + theme(text = element_text(size=3)) + theme_bw()
+
+library(patchwork)
+
+(total + cyano)/(lichen + moss)
+```
+
+
+```{r}
+eps$Sample.Year <- eps$Year
+boxplot.stats(eps$Conc_mg_g)$out # no outliers
+
+eps.short <- eps %>% group_by(FireType, Sample.Year, Site) %>% summarize(eps.conc = mean(Conc_mg_g))
+eps.short$Treatment <- eps.short$FireType
+
+eps.short$Site <- c("pge", "pgw", "rc","pge", "pgw", "rc","pge", "pgw", "pge", "pgw", "rc", "rc")
+eps.macro <- merge(macro.short[-c(11,12),], eps.short[-12,], by = c("Treatment", "Sample.Year", "Site"))
+
+epsmacromod <- lm(log(total+1) ~ eps.conc, data = eps.macro)
+par(mfrow=c(2,2))
+plot(epsmacromod)
+Anova(epsmacromod) 
+
+epsmacromod.cyano <- lm(log(cyano+1) ~ eps.conc, data = eps.macro)
+par(mfrow=c(2,2))
+plot(epsmacromod.cyano)
+Anova(epsmacromod.cyano) 
+
+epsmacromod.lichen <- lm(log(lichen+1) ~ eps.conc, data = eps.macro)
+par(mfrow=c(2,2))
+plot(epsmacromod.lichen)
+Anova(epsmacromod.lichen) 
+
+epsmacromod.moss <- lm(log(moss+1) ~ eps.conc, data = eps.macro)
+par(mfrow=c(2,2))
+plot(epsmacromod.moss)
+Anova(epsmacromod.moss) 
+
+```
+
+Repeat for Nitrogen Measurments 
+
+
+```{r}
+# shift 
+boxplot.stats(nfix$shift)$out # no outliers
+nfix.out <- nfix %>% filter(shift < 7.5)
+nfix.short <- nfix.out %>% group_by(FireType, Year, Site) %>% summarize(shift= mean(shift), shift_N= mean(shift_N), shift_C=mean(shift_C), shift_CN=mean(shift_CN), CN =mean(as.numeric(C.N_Cont)), N =mean(as.numeric(Total_N_Cont)), C = mean(as.numeric(Total_C_Cont)))
+nfix.short$Treatment <- nfix.short$FireType
+nfix.short$Sample.Year <- nfix.short$Year
+
+nfix.short$Site <- c("pge", "pgw", "rc","pge", "pgw", "rc","pge", "pgw", "pge", "pgw", "rc", "rc")
+nfix.macro <- merge(macro.short[-c(11,12),], nfix.short[-12,], by = c("Treatment", "Sample.Year", "Site"))
+
+nfixmacromod <- lm(log(total+1) ~ shift^2, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod)
+Anova(nfixmacromod) 
+
+nfixmacromod.cyano <- lm(log(cyano+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.cyano)
+Anova(nfixmacromod.cyano) 
+
+nfixmacromod.lichen <- lm(log(lichen+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.lichen)
+Anova(nfixmacromod.lichen) 
+
+nfixmacromod.moss <- lm(log(moss+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.moss)
+Anova(nfixmacromod.moss) 
+####
+nfixmacromod <- lm(log(total+1) ~ shift_C, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod)
+Anova(nfixmacromod) 
+
+nfixmacromod.cyano <- lm(log(cyano+1) ~ shift_C, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.cyano)
+Anova(nfixmacromod.cyano) 
+
+nfixmacromod.lichen <- lm(log(lichen+1) ~ shift_C, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.lichen)
+Anova(nfixmacromod.lichen) 
+
+nfixmacromod.moss <- lm(log(moss+1) ~ shift_C, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.moss)
+Anova(nfixmacromod.moss) 
+
+####
+
+nfixmacromod <- lm(log(total+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod)
+Anova(nfixmacromod) 
+
+nfixmacromod.cyano <- lm(log(cyano+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.cyano)
+Anova(nfixmacromod.cyano) 
+
+nfixmacromod.lichen <- lm(log(lichen+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.lichen)
+Anova(nfixmacromod.lichen) 
+
+nfixmacromod.moss <- lm(log(moss+1) ~ shift, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.moss)
+Anova(nfixmacromod.moss) 
+
+nfixmacromod <- lm(log(total+1) ~ shift_N, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod)
+Anova(nfixmacromod) 
+
+nfixmacromod.cyano <- lm(log(cyano+1) ~ shift_N, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.cyano)
+Anova(nfixmacromod.cyano) 
+
+nfixmacromod.lichen <- lm(log(lichen+1) ~ shift_N, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.lichen)
+Anova(nfixmacromod.lichen) 
+
+nfixmacromod.moss <- lm(log(moss+1) ~ shift_N, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.moss)
+Anova(nfixmacromod.moss) 
+
+####
+
+nfixmacromod <- lm(log(total+1) ~ shift_CN, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod)
+Anova(nfixmacromod) 
+
+nfixmacromod.cyano <- lm(log(cyano+1) ~ shift_CN, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.cyano)
+Anova(nfixmacromod.cyano) 
+
+nfixmacromod.lichen <- lm(log(lichen+1) ~ shift_CN, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.lichen)
+Anova(nfixmacromod.lichen) 
+
+nfixmacromod.moss <- lm(log(moss+1) ~ shift_CN, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod.moss)
+Anova(nfixmacromod.moss) 
+
+####
+nfixmacromod <- lm(log(total+1) ~ C, data = nfix.macro)
+par(mfrow=c(2,2))
+plot(nfixmacromod)
+Anova(nfixmacromod) 
+
+plot(log(lichen+1) ~ shift, data = nfix.macro)
+
+```
+```{r}
+# level 2 
+celldiv.genes <- bsc.funct %>% filter(level2 == "Cell Division")
+celldiv.genes <- celldiv.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+celldiv.genes  <- aggregate(. ~ level2, transform(celldiv.genes , level2 = level2), sum)
+rownames(celldiv.genes ) <- celldiv.genes$level2
+celldiv.genes$level2 <- NULL
+celldiv.genes.transposed <- as.data.frame(t(as.matrix(celldiv.genes)))
+rownames(celldiv.genes.transposed) <- colnames(celldiv.genes)
+colnames(celldiv.genes.transposed) <- rownames(celldiv.genes)
+celldiv.genes.all <- as.data.frame(c(metadata, celldiv.genes.transposed))
+
+celldiv.genes.all$FireType <- as.factor(celldiv.genes.all$FireType)
+div <- lm(Cell.Division ~ FireType, data = celldiv.genes.all)
+Anova(div)
+summary(glht(div, linfct = mcp(FireType = "Tukey")))
+
+
+lipid.genes <- bsc.funct %>% filter(level2 == "Lipid-derived mediators")
+lipid.genes <- lipid.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+lipid.genes  <- aggregate(. ~ level2, transform(lipid.genes , level2 = level2), sum)
+rownames(lipid.genes ) <- lipid.genes$level2
+lipid.genes$level2 <- NULL
+lipid.genes.transposed <- as.data.frame(t(as.matrix(lipid.genes)))
+rownames(lipid.genes.transposed) <- colnames(lipid.genes)
+colnames(lipid.genes.transposed) <- rownames(lipid.genes)
+lipid.genes.all <- as.data.frame(c(metadata, lipid.genes.transposed))
+
+lipid.genes.all$FireType <- as.factor(lipid.genes.all$FireType)
+lm <- lm(Lipid.derived.mediators ~ FireType, data = lipid.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+
+motility.genes <- bsc.funct %>% filter(level3 == "Bacterial_Chemotaxis")
+motility.genes <- motility.genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+motility.genes  <- aggregate(. ~ level3, transform(motility.genes , level3 = level3), sum)
+rownames(motility.genes ) <- motility.genes$level3
+motility.genes$level3 <- NULL
+motility.genes.transposed <- as.data.frame(t(as.matrix(motility.genes)))
+rownames(motility.genes.transposed) <- colnames(motility.genes)
+colnames(motility.genes.transposed) <- rownames(motility.genes)
+motility.genes.all <- as.data.frame(c(metadata, motility.genes.transposed))
+
+motility.genes.all$FireType <- as.factor(motility.genes.all$FireType)
+lm <- lm(Bacterial_Chemotaxis ~ FireType, data = motility.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+
+seleno.genes <- bsc.funct %>% filter(level2 == "Selenoproteins")
+seleno.genes <- seleno.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+seleno.genes  <- aggregate(. ~ level2, transform(seleno.genes , level2 = level2), sum)
+rownames(seleno.genes ) <- seleno.genes$level2
+seleno.genes$level2 <- NULL
+seleno.genes.transposed <- as.data.frame(t(as.matrix(seleno.genes)))
+rownames(seleno.genes.transposed) <- colnames(seleno.genes)
+colnames(seleno.genes.transposed) <- rownames(seleno.genes)
+seleno.genes.all <- as.data.frame(c(metadata, seleno.genes.transposed))
+
+seleno.genes.all$FireType <- as.factor(seleno.genes.all$FireType)
+lm <- lm(Selenoproteins ~ FireType, data = seleno.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+ribo.genes <- bsc.funct %>% filter(level2 == "Ribosomal Protein L28P relates to a set of uncharacterized proteins")
+ribo.genes <- ribo.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+ribo.genes  <- aggregate(. ~ level2, transform(ribo.genes , level2 = level2), sum)
+rownames(ribo.genes ) <- ribo.genes$level2
+ribo.genes$level2 <- NULL
+ribo.genes.transposed <- as.data.frame(t(as.matrix(ribo.genes)))
+rownames(ribo.genes.transposed) <- colnames(ribo.genes)
+colnames(ribo.genes.transposed) <- rownames(ribo.genes)
+ribo.genes.all <- as.data.frame(c(metadata, ribo.genes.transposed))
+
+ribo.genes.all$FireType <- as.factor(ribo.genes.all$FireType)
+lm <- lm(Ribosomal.Protein.L28P.relates.to.a.set.of.uncharacterized.proteins ~ FireType, data = ribo.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+phospho.genes <- bsc.funct %>% filter(level2 == "Phospholipids")
+phospho.genes <- phospho.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+phospho.genes  <- aggregate(. ~ level2, transform(phospho.genes , level2 = level2), sum)
+rownames(phospho.genes ) <- phospho.genes$level2
+phospho.genes$level2 <- NULL
+phospho.genes.transposed <- as.data.frame(t(as.matrix(phospho.genes)))
+rownames(phospho.genes.transposed) <- colnames(phospho.genes)
+colnames(phospho.genes.transposed) <- rownames(phospho.genes)
+phospho.genes.all <- as.data.frame(c(metadata, phospho.genes.transposed))
+
+phospho.genes.all$FireType <- as.factor(phospho.genes.all$FireType)
+lm <- lm(Phospholipids ~ FireType, data = phospho.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+purines.genes <- bsc.funct %>% filter(level2 == "Purines")
+purines.genes <- purines.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+purines.genes  <- aggregate(. ~ level2, transform(purines.genes , level2 = level2), sum)
+rownames(purines.genes ) <- purines.genes$level2
+purines.genes$level2 <- NULL
+purines.genes.transposed <- as.data.frame(t(as.matrix(purines.genes)))
+rownames(purines.genes.transposed) <- colnames(purines.genes)
+colnames(purines.genes.transposed) <- rownames(purines.genes)
+purines.genes.all <- as.data.frame(c(metadata, purines.genes.transposed))
+
+purines.genes.all$FireType <- as.factor(purines.genes.all$FireType)
+lm <- lm(Purines ~ FireType, data = purines.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+cyto.genes <- bsc.funct %>% filter(level2 == "Cytochrome biogenesis")
+cyto.genes <- cyto.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+cyto.genes  <- aggregate(. ~ level2, transform(cyto.genes , level2 = level2), sum)
+rownames(cyto.genes ) <- cyto.genes$level2
+cyto.genes$level2 <- NULL
+cyto.genes.transposed <- as.data.frame(t(as.matrix(cyto.genes)))
+rownames(cyto.genes.transposed) <- colnames(cyto.genes)
+colnames(cyto.genes.transposed) <- rownames(cyto.genes)
+cyto.genes.all <- as.data.frame(c(metadata, cyto.genes.transposed))
+
+cyto.genes.all$FireType <- as.factor(cyto.genes.all$FireType)
+lm <- lm(Cytochrome.biogenesis ~ FireType, data = cyto.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+invasion.genes <- bsc.funct %>% filter(level2 == "Invasion and intracellular resistance")
+invasion.genes <- invasion.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+invasion.genes  <- aggregate(. ~ level2, transform(invasion.genes , level2 = level2), sum)
+rownames(invasion.genes ) <- invasion.genes$level2
+invasion.genes$level2 <- NULL
+invasion.genes.transposed <- as.data.frame(t(as.matrix(invasion.genes)))
+rownames(invasion.genes.transposed) <- colnames(invasion.genes)
+colnames(invasion.genes.transposed) <- rownames(invasion.genes)
+invasion.genes.all <- as.data.frame(c(metadata, invasion.genes.transposed))
+
+invasion.genes.all$FireType <- as.factor(invasion.genes.all$FireType)
+lm <- lm(Invasion.and.intracellular.resistance ~ FireType, data = invasion.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+pts.genes <- bsc.funct %>% filter(level2 == "Sugar Phosphotransferase Systems, PTS")
+pts.genes <- pts.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+pts.genes  <- aggregate(. ~ level2, transform(pts.genes , level2 = level2), sum)
+rownames(pts.genes ) <- pts.genes$level2
+pts.genes$level2 <- NULL
+pts.genes.transposed <- as.data.frame(t(as.matrix(pts.genes)))
+rownames(pts.genes.transposed) <- colnames(pts.genes)
+colnames(pts.genes.transposed) <- rownames(pts.genes)
+pts.genes.all <- as.data.frame(c(metadata, pts.genes.transposed))
+
+pts.genes.all$FireType <- as.factor(pts.genes.all$FireType)
+lm <- lm(Sugar.Phosphotransferase.Systems..PTS ~ FireType, data = pts.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+moly.genes <- bsc.funct %>% filter(level2 == "Molybdopterin oxidoreductase")
+moly.genes <- moly.genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+moly.genes  <- aggregate(. ~ level2, transform(moly.genes , level2 = level2), sum)
+rownames(moly.genes ) <- moly.genes$level2
+moly.genes$level2 <- NULL
+moly.genes.transposed <- as.data.frame(t(as.matrix(moly.genes)))
+rownames(moly.genes.transposed) <- colnames(moly.genes)
+colnames(moly.genes.transposed) <- rownames(moly.genes)
+moly.genes.all <- as.data.frame(c(metadata, moly.genes.transposed))
+
+moly.genes.all$FireType <- as.factor(moly.genes.all$FireType)
+lm <- lm(Molybdopterin.oxidoreductase ~ FireType, data = moly.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+genes <- bsc.funct %>% filter(level2 == "Phages, Prophages")
+genes <- genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+genes  <- aggregate(. ~ level2, transform(genes , level2 = level2), sum)
+rownames(genes ) <- genes$level2
+genes$level2 <- NULL
+genes.transposed <- as.data.frame(t(as.matrix(genes)))
+rownames(genes.transposed) <- colnames(genes)
+colnames(genes.transposed) <- rownames(genes)
+genes.all <- as.data.frame(c(metadata, genes.transposed))
+
+genes.all$FireType <- as.factor(genes.all$FireType)
+lm <- lm(Phages..Prophages ~ FireType, data = genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(FireType = "Tukey")))
+
+seleno.genes.all$site <- as.factor(seleno.genes.all$site)
+lm <- lm(Selenoproteins ~ site, data = seleno.genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(site = "Tukey")))
+
+genes <- bsc.funct %>% filter(level2 == "Protein secretion system, Type VIII (Extracellular nucleation/precipitation pathway, ENP)")
+genes <- genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+genes  <- aggregate(. ~ level2, transform(genes , level2 = level2), sum)
+rownames(genes ) <- genes$level2
+genes$level2 <- NULL
+genes.transposed <- as.data.frame(t(as.matrix(genes)))
+rownames(genes.transposed) <- colnames(genes)
+colnames(genes.transposed) <- rownames(genes)
+genes.all <- as.data.frame(c(metadata, genes.transposed))
+
+genes.all$site <- as.factor(genes.all$site)
+lm <- lm(Protein.secretion.system..Type.VIII..Extracellular.nucleation.precipitation.pathway..ENP. ~ site, data = genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(site = "Tukey")))
+
+genes <- bsc.funct %>% filter(level2 == "Coenzyme F420")
+genes <- genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+genes  <- aggregate(. ~ level2, transform(genes , level2 = level2), sum)
+rownames(genes ) <- genes$level2
+genes$level2 <- NULL
+genes.transposed <- as.data.frame(t(as.matrix(genes)))
+rownames(genes.transposed) <- colnames(genes)
+colnames(genes.transposed) <- rownames(genes)
+genes.all <- as.data.frame(c(metadata, genes.transposed))
+
+genes.all$site <- as.factor(genes.all$site)
+lm <- lm(Coenzyme.F420 ~ site, data = genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(site = "Tukey")))
+
+genes <- bsc.funct %>% filter(level2 == "Periplasmic Stress")
+genes <- genes %>%  dplyr::select(level2, pgeb.1:rcc.4)
+genes  <- aggregate(. ~ level2, transform(genes , level2 = level2), sum)
+rownames(genes ) <- genes$level2
+genes$level2 <- NULL
+genes.transposed <- as.data.frame(t(as.matrix(genes)))
+rownames(genes.transposed) <- colnames(genes)
+colnames(genes.transposed) <- rownames(genes)
+genes.all <- as.data.frame(c(metadata, genes.transposed))
+
+genes.all$site <- as.factor(genes.all$site)
+lm <- lm(Periplasmic.Stress ~ site, data = genes.all)
+Anova(lm)
+summary(glht(lm, linfct = mcp(site = "Tukey")))
+
+genes <- bsc.funct %>% filter(level3 == "Oxidative_stress")
+genes <- genes %>%  dplyr::select(level3, pgeb.1:rcc.4)
+genes  <- aggregate(. ~ level3, transform(genes , level3 = level3), sum)
+rownames(genes ) <- genes$level3
+genes$level3 <- NULL
+genes.transposed <- as.data.frame(t(as.matrix(genes)))
+rownames(genes.transposed) <- colnames(genes)
+colnames(genes.transposed) <- rownames(genes)
+genes.all <- as.data.frame(c(metadata, genes.transposed))
+
+genes.all$site <- as.factor(genes.all$site)
+lm <- lm(Oxidative_stress ~ site, data = genes.all)
+summary(lm)
+Anova(lm)
+summary(glht(lm, linfct = mcp(site = "Tukey")))
+
+
+```
