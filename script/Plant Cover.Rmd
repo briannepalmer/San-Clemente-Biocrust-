@@ -1,0 +1,421 @@
+---
+title: "Plant Cover/Density"
+author: "Brianne"
+date: "2/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries}
+library(tidyverse)
+library(MASS)
+library(lme4)
+library(car)
+library(emmeans)
+library(multcomp)
+library(ggpubr)
+library(rcompanion)
+library(calecopal)
+library(MuMIn)
+library(vegan)
+```
+
+The goal of this script is to look at the difference in plant cover and density in burned and control plots at SCI for 2018-2020. As well as including ordnations for the full plant community 
+
+```{r plant communtity}
+plants <- read.csv("data/all_plants.csv")
+
+plants$Cover <- as.numeric(plants$Cover)
+plants$Year <- as.factor(plants$Year)
+plants$Plot <- plants$ï..Ref
+
+```
+
+```{r plant cover}
+
+plants <- plants %>% filter(Year == c("2018","2019"))
+plants$Plot <- as.factor(plants$Plot)
+
+hist(plants$Cover)
+plantbestmod <- lmer(Cover ~ Treatment + Year + lichencover_2018 +(1|Plot), data = plants)
+residplot(plantbestmod)
+plantmod.log <- lmer(log(Cover+1) ~ Treatment + Year + lichencover_2018 +(1|Plot), data = plants)
+residplot(plantmod.log)
+Anova(plantmod.log)
+
+#Tukey Post-Hoc Test 
+
+summary(glht(plantbestmod, linfct = mcp(Year = "Tukey")))
+my_comparisons2 <- list(c("2018", "2019"))
+
+
+nativecover <- plants %>% filter(Native == "TRUE")
+native.no.na <- nativecover %>% dplyr::select(Cover, Site, Year,Treatment, P_winter2017,P_winter2018 ,P_winter2019 ,  P_winter2020 ,  Tavg_spring2017 , Tavg_spring2018 , cyanocover_2018 , lichencover_2018 , mosscover_2018 , totalcover_2018 , cyanocover_2019 , lichencover_2019 , mosscover_2019 , totalcover_2019 , Plot)
+native.no.na <- na.omit(native.no.na)
+
+
+mod2 <- lmer(Cover ~ Site + Year  + Treatment + P_winter2017 + P_winter2018 + P_winter2019 +  P_winter2020 +  Tavg_spring2017 + Tavg_spring2018 + cyanocover_2018 + lichencover_2018 + mosscover_2018 + totalcover_2018 + cyanocover_2019 + lichencover_2019 + mosscover_2019 + totalcover_2019 + (1|Plot), data = native.no.na, na.action = "na.fail")
+
+# takes FOREVER, only run if you ABSOLUTELY HAVE TO 
+res <- dredge(mod2, trace=2,  fixed = c("Year", "Treatment"), m.max = 20)
+subset(res, delta <= 2, recalc.weights=FALSE)
+importance(res)
+# site, treatment, year 
+
+
+nativebestmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Native == "TRUE"))
+
+Anova(nativebestmod)
+
+summary(glht(nativebestmod, linfct = mcp(Treatment = "Tukey")))
+
+nonnativecover <- plants %>% filter(Native == "FALSE")
+nonnative.no.na <- nativecover %>% dplyr::select(Cover, Site, Year,Treatment, P_winter2017,P_winter2018 ,P_winter2019 ,  P_winter2020 ,  Tavg_spring2017 , Tavg_spring2018 , cyanocover_2018 , lichencover_2018 , mosscover_2018 , totalcover_2018 , cyanocover_2019 , lichencover_2019 , mosscover_2019 , totalcover_2019 , Plot)
+nonnative.no.na <- na.omit(nonnative.no.na)
+
+
+mod2 <- lmer(Cover ~ Site + Year  + Treatment + P_winter2017 + P_winter2018 + P_winter2019 +  P_winter2020 +  Tavg_spring2017 + Tavg_spring2018 + cyanocover_2018 + lichencover_2018 + mosscover_2018 + totalcover_2018 + cyanocover_2019 + lichencover_2019 + mosscover_2019 + totalcover_2019 + (1|Plot), data = nonnative.no.na, na.action = "na.fail")
+
+# takes FOREVER, only run if you ABSOLUTELY HAVE TO 
+res <- dredge(mod2, trace=2,  fixed = c("Year", "Treatment"), m.max = 20)
+subset(res, delta <= 2, recalc.weights=FALSE)
+importance(res)
+
+nonnativebestmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Native == "FALSE"))
+
+Anova(nonnativebestmod)
+
+summary(glht(nativebestmod, linfct = mcp(Year = "Tukey")))
+
+
+nfmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "nf"))
+Anova(nfmod)
+summary(glht(nfmod, linfct = mcp(Site = "Tukey")))
+
+nnfmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "nnf"))
+Anova(nnfmod)
+summary(glht(nnfmod, linfct = mcp(Year = "Tukey")))
+summary(glht(nnfmod, linfct = mcp(Treatment = "Tukey")))
+
+ngmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "ng"))
+Anova(ngmod)
+summary(glht(nnfmod, linfct = mcp(Treatment = "Tukey")))
+
+nngmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "nng"))
+Anova(nngmod)
+summary(glht(nnfmod, linfct = mcp(Treatment = "Tukey")))
+
+
+new.df <- plants %>% dplyr::select(Site, Treatment, Cover, Year, Funct.Gp) %>% pivot_wider(names_from = Funct.Gp, values_from = Cover, values_fn = list(Cover = mean))
+
+new.df <- new.df %>% pivot_longer(cols = c("nf", "ng", "nnf", "nng", "UNK", "ns", "nns"), values_to = "count") %>% mutate(percent = count/40)
+
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+
+df2 <- data_summary(new.df, varname="percent", 
+                    groupnames=c("name", "Treatment", "Year"))
+head(df2)
+
+# with year as a continuous variable 
+df2$Year <- as.numeric(df2$Year)
+ggplot(df2 %>% filter(!name %in% c("ns", "nns")), aes(x=Year, y=percent*100, group=Treatment, color=Treatment)) + 
+  geom_line() + 
+  geom_point()+ 
+  geom_errorbar(aes(ymin=(percent-sd)*100, ymax=(percent+sd)*100), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() + 
+  facet_grid(name~Treatment) + 
+  scale_x_continuous(breaks = 6:7,
+    labels = c("2018", "2019")) + 
+  theme(legend.position = "none") + scale_color_manual(values = cal_palette("superbloom3")) + ylab("Mean Percent Cover within Site")
+
+
+```
+
+```{r plant density}
+plants$Density <- as.numeric(plants$Density)
+
+mod1 <- lmer(Density ~ Site + Year + Treatment +P_winter2017 + P_spring2017 +  P_summer2017 + P_fall2017+ P_winter2018 + P_spring2018 + P_summer2018 + P_fall2018 + P_winter2019 + P_spring2019  + P_summer2019 + P_fall2019 + P_winter2020 + P_spring2020 + Tavg_winter2017 + Tavg_spring2017 +  Tavg_summer2017 + Tavg_fall2017+ Tavg_winter2018 + Tavg_spring2018 + Tavg_summer2018 + Tavg_fall2018 + Tavg_winter2019 + Tavg_spring2019  + Tavg_summer2019 + Tavg_fall2019 + Tavg_winter2020 + Tavg_spring2020 + cyanocover_2018 + lichencover_2018 + mosscover_2018 + totalcover_2018 + cyanocover_2019 + lichencover_2019 + mosscover_2019 + totalcover_2019 + (1|Plot), data = plants)
+
+Anova(mod1)
+
+res <- dredge(mod2, trace=2,  fixed = c("Year", "Treatment"), m.max = 20)
+subset(res, delta <= 2, recalc.weights=FALSE)
+importance(res)
+# site, treatment, and year 
+
+
+plantbestmod <- lmer(Density ~ Treatment + Year + Site +(1|Plot), data = plants)
+
+Anova(plantbestmod)
+
+#Tukey Post-Hoc Test 
+
+summary(glht(plantbestmod, linfct = mcp(Year = "Tukey")))
+my_comparisons2 <- list(c("2018", "2019"))
+
+
+nativebestmod <- lmer(Density ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Native == "TRUE"))
+
+Anova(nativebestmod)
+
+summary(glht(nativebestmod, linfct = mcp(Year = "Tukey")))
+
+nonnativebestmod <- lmer(Density ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Native == "FALSE"))
+
+Anova(nonnativebestmod)
+
+summary(glht(nativebestmod, linfct = mcp(Year = "Tukey")))
+
+nfmod <- lmer(Cover ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "nf"))
+Anova(nfmod)
+
+summary(glht(nfmod, linfct = mcp(Site= "Tukey")))
+
+nf.df.summary <- plants %>%
+  group_by(Year, Treatment,Site) %>%
+  summarise(
+    sd = sd(Density, na.rm = TRUE),
+    Density = mean(Density)
+  )
+
+
+nnfmod <- lmer(Density ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "nnf"))
+Anova(nnfmod)
+summary(glht(nnfmod, linfct = mcp(Year = "Tukey")))
+summary(glht(nnfmod, linfct = mcp(Treatment = "Tukey")))
+
+
+ngmod <- lmer(Density ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "ng"))
+Anova(ngmod)
+summary(glht(nnfmod, linfct = mcp(Treatment = "Tukey")))
+
+
+nngmod <- lmer(Density ~ Treatment + Year + Site +(1|Plot), data = plants %>% filter(Funct.Gp == "nng"))
+Anova(nngmod)
+summary(glht(nngmod, linfct = mcp(Treatment = "Tukey")))
+
+plants$Density <- as.numeric(plants$Density)
+new.df <- plants %>% dplyr::select(Site, Treatment, Density, Year, Funct.Gp) %>% pivot_wider(names_from = Funct.Gp, values_from = Density, values_fn = list(Density = mean))
+
+new.df <- new.df %>% pivot_longer(cols = c("nf", "ng", "nnf", "nng", "UNK", "ns", "nns"), values_to = "count") %>% mutate(percent = count/40)
+
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+
+df2 <- data_summary(new.df, varname="count", 
+                    groupnames=c("name", "Treatment", "Year"))
+head(df2)
+
+# with year as a continuous variable 
+df2$Year <- as.numeric(df2$Year)
+df2$count <- as.numeric(df2$count)
+ggplot(df2 %>% filter(!name %in% c("ns", "nns")), aes(x=Year, y=count, group=Treatment, color=Treatment)) + 
+  geom_line() + 
+  geom_point()+ 
+  geom_errorbar(aes(ymin=count-sd, ymax=count+sd), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() + 
+  facet_grid(name~Treatment) + 
+  scale_x_continuous(breaks = 6:7,
+    labels = c("2018", "2019")) + 
+  theme(legend.position = "none") + scale_color_manual(values = cal_palette("superbloom3")) + ylab("Mean Number of Plants Within Site")
+
+```
+```{r cover plant community}
+
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+plants$Cover <- as.numeric(plants$Cover)
+plants$ID <- plants$ï..Ref
+plants <- plants %>% filter(Year %in% c("2018", "2019"))
+
+plants <- plants %>% dplyr::select(Site, Treatment, Year, Code, Cover, ID, totalcover_2018, totalcover_2019, nh4_winter18, Mg, K, Ca, Na, P, DOC_winter18, NO3_winter18, CN_ratio, pH_winter18, PO4, Sand, Silt, Clay, wc_winter18, om_winter18, P_winter2018, P_winter2019)
+  
+metadata <- plants %>% group_by(Site, Treatment, Year, ID) %>% summarize(totalcover_2018 = mean(totalcover_2018), totalcover_2019 = mean(totalcover_2019), nh4_winter18 = mean(nh4_winter18), Mg = mean(Mg), K = mean(K), Ca = mean(Ca), Na = mean(Na), P= mean(P), DOC_winter18 = mean(DOC_winter18), NO3_winter18 = mean(NO3_winter18), CN_ratio = mean(CN_ratio), pH_winter18 = mean(pH_winter18), PO4 = mean(PO4), Sand = mean(Sand), Silt = mean(Silt), Clay = mean(Clay), wc_winter18=mean(wc_winter18), om_winter18=mean(om_winter18), P_winter2018=mean(P_winter2018), P_winter2019=mean(P_winter2019))
+metadata$Year <- as.factor(metadata$Year)
+
+plants <- plants %>% group_by(Site, Treatment, Year, ID, Code) %>% summarize(Cover = sum(Cover))%>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean))
+
+
+plants[is.na(plants)] <- 0
+
+plants.only <- plants[-c(1:4)]
+plants.nmds <- metaMDS(plants.only, trace = FALSE, trymax=100, "bray")
+
+
+plants.nmds$stress 
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = plants.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = plants.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$Treatment, site = metadata$Site, year = metadata$Year) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+
+# make the NMDS plot
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = treatment, shape = year)) + geom_point() + 
+  stat_ellipse() + theme_bw()
+
+# determine if the differene is significant by doing a PERMANOVA
+adonis(plants.only ~ Treatment*Year*Site, metadata) 
+
+library(pairwiseAdonis)
+
+pairwise.adonis(plants.only,factors=metadata$Treatment)
+pairwise.adonis(plants.only,factors=metadata$Site)
+pairwise.adonis(plants.only,factors=metadata$Year)
+
+
+env <- metadata[c(5:24)]
+
+env.fit <- envfit(plants.nmds,env , permutations = 999, na.rm = TRUE)
+
+env.fit$vectors
+arrow <- data.frame(env.fit$vectors$arrows, R = env.fit$vectors$r, P = env.fit$vectors$pvals)
+arrow$FG <-  rownames(arrow)
+arrow.p <- filter(arrow, P<=0.05)
+
+superbloom <- cal_palette(name = "superbloom3", n = 11, type = "continuous")
+
+ggplot(data=NMDS, aes(x = MDS1, y = MDS2)) +
+  geom_point(data=NMDS, aes(MDS1, MDS2, shape =year),position=position_jitter(.1)) + stat_ellipse(aes(fill=year), alpha=.2,type='t',size =1, geom="polygon")+ scale_fill_manual(values = cal_palette("superbloom3"))+
+  theme_minimal()+ geom_segment(data=arrow.p, aes(x=0, y=0, xend=NMDS1, yend=NMDS2, color=FG), arrow=arrow(length=unit(.2, "cm")*arrow.p$R))
+
+
+```
+
+```{r Density}
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+plants$Density <- as.numeric(plants$Density)
+plants$ID <- plants$ï..Ref
+plants <- plants %>% filter(Year %in% c("2018", "2019"))
+
+plants <- plants %>% dplyr::select(Site, Treatment, Year, Code, Density, ID, totalcover_2018, totalcover_2019, nh4_winter18, Mg, K, Ca, Na, P, DOC_winter18, NO3_winter18, CN_ratio, pH_winter18, PO4, Sand, Silt, Clay, wc_winter18, om_winter18, P_winter2018, P_winter2019)
+  
+metadata <- plants %>% group_by(Site, Treatment, Year, ID) %>% summarize(totalcover_2018 = mean(totalcover_2018), totalcover_2019 = mean(totalcover_2019), nh4_winter18 = mean(nh4_winter18), Mg = mean(Mg), K = mean(K), Ca = mean(Ca), Na = mean(Na), P= mean(P), DOC_winter18 = mean(DOC_winter18), NO3_winter18 = mean(NO3_winter18), CN_ratio = mean(CN_ratio), pH_winter18 = mean(pH_winter18), PO4 = mean(PO4), Sand = mean(Sand), Silt = mean(Silt), Clay = mean(Clay), wc_winter18=mean(wc_winter18), om_winter18=mean(om_winter18), P_winter2018=mean(P_winter2018), P_winter2019=mean(P_winter2019))
+metadata$Year <- as.factor(metadata$Year)
+
+
+plants <- plants %>% group_by(Site, Treatment, Year, ID, Code) %>% summarize(Density = sum(Density))%>% pivot_wider(names_from = Code, values_from = Density, values_fn = list(Density = mean))
+
+
+plants[is.na(plants)] <- 0
+
+plants.only <- plants[-c(1:4)]
+plants.nmds <- metaMDS(plants.only, trace = FALSE, trymax=100, "bray")
+
+
+plants.nmds$stress 
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = plants.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = plants.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$Treatment, site = metadata$Site, year = metadata$Year) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+
+# make the NMDS plot
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = treatment, shape = year)) + geom_point() + 
+  stat_ellipse() + theme_bw()
+
+# determine if the differene is significant by doing a PERMANOVA
+adonis(plants.only ~ Treatment*Year*Site, metadata) 
+pairwise.adonis(plants.only,factors=metadata$Treatment)
+pairwise.adonis(plants.only,factors=metadata$Site)
+pairwise.adonis(plants.only,factors=metadata$Year)
+
+env <- metadata[c(5:24)]
+
+env.fit <- envfit(plants.nmds,env , permutations = 999, na.rm = TRUE)
+
+env.fit$vectors
+arrow <- data.frame(env.fit$vectors$arrows, R = env.fit$vectors$r, P = env.fit$vectors$pvals)
+arrow$FG <-  rownames(arrow)
+arrow.p <- filter(arrow, P<=0.05)
+
+p <- ggplot(data=NMDS, aes(x = MDS1, y = MDS2)) +
+  geom_point(aes(shape = year, col = treatment)) + stat_ellipse(aes(col=treatment, shape = year), alpha=.2,type='t',size =1, geom="polygon")+ scale_color_manual(values = cal_palette("superbloom3")) + theme_minimal()
+
+p + geom_segment(data=arrow.p, aes(x=0, y=0, xend=NMDS1, yend=NMDS2, linetype =FG), arrow=arrow(length=unit(.2, "cm")*arrow.p$R))
+
+
+
+```
+
+```{r nf cover}
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+plants$Cover <- as.numeric(plants$Cover)
+plants$ID <- plants$ï..Ref
+plants <- plants %>% filter(Year %in% c("2018", "2019"), Funct.Gp == "nf")
+
+plants <- plants %>% dplyr::select(Site, Treatment, Year, Code, Cover, ID, totalcover_2018, totalcover_2019, nh4_winter18, Mg, K, Ca, Na, P, DOC_winter18, NO3_winter18, CN_ratio, pH_winter18, PO4, Sand, Silt, Clay, wc_winter18, om_winter18, P_winter2018, P_winter2019)
+  
+metadata <- plants %>% group_by(Site, Treatment, Year, ID) %>% summarize(totalcover_2018 = mean(totalcover_2018), totalcover_2019 = mean(totalcover_2019), nh4_winter18 = mean(nh4_winter18), Mg = mean(Mg), K = mean(K), Ca = mean(Ca), Na = mean(Na), P= mean(P), DOC_winter18 = mean(DOC_winter18), NO3_winter18 = mean(NO3_winter18), CN_ratio = mean(CN_ratio), pH_winter18 = mean(pH_winter18), PO4 = mean(PO4), Sand = mean(Sand), Silt = mean(Silt), Clay = mean(Clay), wc_winter18=mean(wc_winter18), om_winter18=mean(om_winter18), P_winter2018=mean(P_winter2018), P_winter2019=mean(P_winter2019))
+metadata$Year <- as.factor(metadata$Year)
+
+plants <- plants %>% group_by(Site, Treatment, Year, ID, Code) %>% summarize(Cover = sum(Cover))%>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean))
+
+plants[is.na(plants)] <- 0
+
+plants.only <- plants[-c(1:4)]
+plants.nmds <- metaMDS(plants.only, trace = FALSE, trymax=100, "bray")
+
+
+plants.nmds$stress 
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = plants.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = plants.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$Treatment, site = metadata$Site, year = metadata$Year) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+
+# make the NMDS plot
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = treatment, shape = year)) + geom_point() + 
+  stat_ellipse() + theme_bw() + labs(title = "Treatment")
+
+# determine if the differene is significant by doing a PERMANOVA
+adonis(plants.only ~ Treatment*Year*Site, metadata) 
+
+env <- metadata[c(5:24)]
+
+env.fit <- envfit(plants.nmds,env , permutations = 999, na.rm = TRUE)
+
+env.fit$vectors
+arrow <- data.frame(env.fit$vectors$arrows, R = env.fit$vectors$r, P = env.fit$vectors$pvals)
+arrow$FG <-  rownames(arrow)
+arrow.p <- filter(arrow, P<=0.05)
+
+
+p <- ggplot(data=NMDS, aes(x = MDS1, y = MDS2)) +
+  geom_point(aes(shape = year, col = treatment)) + stat_ellipse(aes(col=treatment, shape = year), alpha=.2,type='t',size =1, geom="polygon")+ scale_color_manual(values = cal_palette("superbloom3")) + theme_minimal()
+
+p + geom_segment(data=arrow.p, aes(x=0, y=0, xend=NMDS1, yend=NMDS2, linetype =FG), arrow=arrow(length=unit(.2, "cm")*arrow.p$R))
+
+
+```
