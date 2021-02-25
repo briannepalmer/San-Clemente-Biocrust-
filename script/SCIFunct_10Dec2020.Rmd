@@ -1,5 +1,5 @@
 ---
-title: "SCI_function_09Dec2020"
+title: "SCI_function_09Dec2020 "
 author: "Brianne"
 date: "12/9/2020"
 output: html_document
