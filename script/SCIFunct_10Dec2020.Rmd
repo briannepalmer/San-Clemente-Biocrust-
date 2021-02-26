@@ -100,26 +100,23 @@ ggplot(chl, aes(x = as.factor(year), y = chl_total_mg_per_g, fill = fire.type)) 
 
 chl$year <- as.numeric(chl$year)
 
-ggplot(chl_summary, aes(x=year, y=chl_total_mg_per_g, group=fire.type, color=fire.type)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(site ~ fire.type) + theme(legend.position = "none")
-
-
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/chlorophyll_grid.pdf", width = 8, height = 4)
 ggplot(chl_summary, aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(site ~ treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid_pge.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/chlorophyll_grid_pge.pdf", width = 8, height = 4)
 ggplot(chl_summary %>% filter(site == "pge"), aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid_pgw.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/chlorophyll_grid_pgw.pdf", width = 8, height = 4)
 ggplot(chl_summary %>% filter(site == "pgw"), aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid_rc.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/chlorophyll_grid_rc.pdf", width = 8, height = 4)
 ggplot(chl_summary %>% filter(site == "rc"), aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/chlorophyll_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/chlorophyll_grid.pdf", width = 8, height = 4)
 ggplot(chl_summary, aes(x=year, y=chl_total_mg_per_g, group=treatment, color=treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=chl_total_mg_per_g - sd, ymax=chl_total_mg_per_g + sd, width=.2)) + theme_bw() + facet_grid(site ~ treatment) + theme(legend.position = "none")
 dev.off()
 ```
@@ -142,23 +139,23 @@ eps_summary <- data_summary(eps, varname="Conc_mg_g",
 ggplot(eps, aes(x = as.factor(Year), y = Conc_mg_g, fill = FireType)) + geom_boxplot()+ facet_grid(Site ~ FireType) + theme_bw()
 
 eps_summary$Year <- as.factor(eps_summary$Year)
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/eps_grid.pdf", width = 8, height = 4)
 ggplot(eps_summary, aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid_pge.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/eps_grid_pge.pdf", width = 8, height = 4)
 ggplot(eps_summary %>% filter(Site == "PGE"), aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid_pgw.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/eps_grid_pgw.pdf", width = 8, height = 4)
 ggplot(eps_summary %>% filter(Site == "PGW"), aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid_rc.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/eps_grid_rc.pdf", width = 8, height = 4)
 ggplot(eps_summary %>% filter(Site == "RC"), aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/eps_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/eps_grid.pdf", width = 8, height = 4)
 ggplot(eps_summary, aes(x=Year, y=Conc_mg_g, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=Conc_mg_g - sd, ymax=Conc_mg_g + sd, width=.2)) + theme_bw() + facet_grid(Site ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
@@ -227,23 +224,23 @@ ggplot(data = nfix.no.out, aes(x = FireType, y = shift, fill = FireType)) + geom
 nifx_summary <- data_summary(nfix.no.out, varname="shift", 
                     groupnames=c("Site", "Treatment", "Year"))
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/n_shift_grid.pdf", width = 8, height = 4)
 ggplot(data=data_summary(nfix.no.out, varname="shift", 
                     groupnames=c("Site", "Treatment", "Year")), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid_pge.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/n_shift_grid_pge.pdf", width = 8, height = 4)
 ggplot(data=data_summary(nfix.no.out, varname="shift", 
                     groupnames=c("Site", "Treatment", "Year")) %>% filter(Site == "PGE"), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
 dev.off()
 
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid_pgw.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/n_shift_grid_pgw.pdf", width = 8, height = 4)
 ggplot(data=data_summary(nfix.no.out, varname="shift", 
                     groupnames=c("Site", "Treatment", "Year")) %>% filter(Site == "PGW"), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/n_shift_grid_rc.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/n_shift_grid_rc.pdf", width = 8, height = 4)
 ggplot(data=data_summary(nfix.no.out, varname="shift", 
                     groupnames=c("Site", "Treatment", "Year")) %>% filter(Site == "RC"), aes(x= Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")+ geom_hline(yintercept=0, linetype="dashed")
 dev.off()
@@ -252,29 +249,29 @@ dev.off()
 
 c_shift_summary <- data_summary(c_shift, varname="shift_C", 
                     groupnames=c("Site", "Treatment", "Year"))
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid.pdf", width = 8, height = 4)
+pdf("vc_shift_grid.pdf", width = 8, height = 4)
 ggplot(data=c_shift_summary, aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid_pge.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/c_shift_grid_pge.pdf", width = 8, height = 4)
 ggplot(data=c_shift_summary %>% filter(Site == "PGE"), aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid_pgw.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/c_shift_grid_pgw.pdf", width = 8, height = 4)
 ggplot(data=c_shift_summary %>% filter(Site == "PGW"), aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid_rc.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/c_shift_grid_rc.pdf", width = 8, height = 4)
 ggplot(data=c_shift_summary %>% filter(Site == "RC"), aes(x= Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(. ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/nfix_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/nfix_grid.pdf", width = 8, height = 4)
 ggplot(data=data_summary(nfix.no.out, varname="shift", 
                     groupnames=c("Site", "Treatment", "Year")), aes(x=Year, y=shift, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift - sd, ymax=shift + sd, width=.2)) + theme_bw() + facet_grid(Site ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/figures/c_shift_grid.pdf", width = 8, height = 4)
+pdf("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/figures/c_shift_grid.pdf", width = 8, height = 4)
 ggplot(data=c_shift_summary, aes(x=Year, y=shift_C, group=Treatment, color=Treatment)) + geom_line() + geom_point() + geom_errorbar(aes(ymin=shift_C - sd, ymax=shift_C + sd, width=.2)) + theme_bw() + facet_grid(Site ~ Treatment) + theme(legend.position = "none")
 dev.off()
 
@@ -283,30 +280,32 @@ dev.off()
 
 ```{r combine datasets}
 
-chl_short <- chl %>% dplyr::select(year, site, fire.type, chl_total_mg_per_g, treatment) %>% group_by(year,fire.type, site) %>% summarize_at(vars(chl_total_mg_per_g),list(mean = mean))
+chl$year <- as.factor(chl$year)
+chl$chl_total_mg_per_g <- as.numeric(chl$chl_total_mg_per_g)
+# remove NAs
+chl <- chl[-c(35,39,47,75:78,82,88,93,95,99,101,112),]
+
+chl_short <- chl %>% group_by(year,fire.type, site) %>% summarize_at(vars(chl_total_mg_per_g),list(mean = mean))
 chl_short<- chl_short %>% dplyr::rename(total_chl = mean)
+chl_short <- chl_short[-12,]
+
 eps_short <- eps %>% group_by(Site, Year, FireType) %>% summarize_at(vars(Conc_mg_g),list(mean = mean))
 eps_short<- eps_short %>% dplyr::rename(total_eps = mean, site = Site, year = Year, fire.type = FireType)
 eps_short <- eps_short[-12,]
-nfix_short <- nfix %>% group_by(FireType, Year, Site)%>% summarize_at(vars(X.N:N_uptake),list(mean = mean))
-nfix_short <- nfix_short[-12,]
+
+nfix_short <- nfix %>% group_by(FireType, Year, Site)%>% summarize_at(vars(c(X.N_Inc:Total_C_Cont, shift_N:shift_CN)),list(mean = mean))
 nfix_short<- nfix_short %>% dplyr::rename(fire.type = FireType, year = Year, site = Site)
-macro_short <- macro %>% group_by(Site, Treatment, Sample.Year) %>% summarize_at(vars(cyano:Total),list(mean = mean)) %>% filter(Sample.Year != "2020", Treatment != "rx/treatment")
+nfix_short <- nfix_short[-12,]
+
+macro_short <- macro %>% group_by(Site, Treatment, Sample.Year) %>% summarize_at(vars(cyano:Total),list(mean = mean)) %>% filter(Sample.Year != "2020", Treatment != "rx/wild")
+
 macro_short <- macro_short %>% dplyr::rename(fire.type = Treatment, year = Sample.Year, site = Site)
 
 labfunct <- merge(macro_short, chl_short, by = c ("site", "year"))
 labfunct <- merge(labfunct, eps_short, by = c("year"))
 labfunct <- merge(labfunct, nfix_short, by = c("year"))
 
-labfunct <- labfunct[-c(2,9,11,12,14)]
-labfunct <- labfunct %>% dplyr::rename(fire.type = fire.type.x)
-
-
 labfunct <- data.frame(macro_short, chl_short, eps_short, nfix_short)
-labfunct <- labfunct[-c(9:11,13:15,17:19)]
-
-ggplot(labfunct, aes(x=Moss_mean, y=total_chl)) + geom_point() + geom_smooth(method = 'glm')
-
 
 ```
 
@@ -320,17 +319,8 @@ Anova(chl.macro.mod)
 eps.macro.mod <- glm(Total_mean ~ total_eps, data = labfunct)
 Anova(eps.macro.mod)
 
-nfix.macro.mod <- glm(Total_mean ~ N_uptake_mean, data = labfunct)
+nfix.macro.mod <- glm(Total_mean ~ shift_N_mean, data = labfunct)
 Anova(nfix.macro.mod)
-
-N.macro.mod <- glm(Total_mean ~ X.N_mean, data = labfunct)
-Anova(N.macro.mod)
-
-C.macro.mod <- glm(Total_mean ~ X.C_mean, data = labfunct)
-Anova(C.macro.mod)
-
-CN.macro.mod <- glm(Total_mean ~ C.N_mean, data = labfunct)
-Anova(CN.macro.mod)
 
 ```
 There is no relationship between lab measured traits and total biocrust cover 
