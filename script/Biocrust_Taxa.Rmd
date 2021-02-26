@@ -189,3 +189,233 @@ env.fit <- envfit(genus.nmds,env , permutations = 999, na.rm = TRUE)
 env.fit$vectors
 
 ```
+
+Make stacked bar plots and heat maps 
+
+```{r}
+
+all.taxa[c(7:30)] <- sapply(all.taxa[c(7:30)],as.numeric)
+all.taxa$Sum <-rowSums(all.taxa[c(7:30)]) 
+one_percent <- all.taxa %>% filter(Sum < 0.01)
+one_percent_summed <- colSums(one_percent[c(7:30)])
+one_percent <- one_percent %>%  dplyr::select(genus, bsc1:bsc24)
+head(one_percent)
+one_percent <- aggregate(. ~ genus, transform(one_percent, genus = genus), sum)
+rownames(one_percent) <- one_percent$genus
+one_percent$genus <- NULL
+head(one_percent)
+one_percent.transposed <- as.data.frame(t(as.matrix(one_percent)))
+rownames(one_percent.transposed) <- colnames(one_percent)
+colnames(one_percent.transposed) <- rownames(one_percent)
+remove <- colnames(one_percent.transposed)
+genus.df <- genus.all[-which(names(genus.all) %in% remove)]
+less_1_percent <- rowSums(one_percent.transposed)
+genus.df$less_1_percent <- less_1_percent
+
+remove.2 <- one_percent$genus
+all.taxa.df <- all.taxa %>% filter(!genus %in% remove)
+
+one_percent_vector <- c("One Percent", "One Percent", "One Percent", "One Percent", "One Percent", "One Percent", rowSums(one_percent[1:24]))
+
+all.taxa.df <- rbind(all.taxa.df, one_percent_vector)
+
+phylum <- all.taxa.df %>%  dplyr::select(phylum, bsc1:bsc24)
+head(phylum)
+phylum[c(2:25)] <- sapply(phylum[c(2:25)],as.numeric)
+phylum <- aggregate(. ~ phylum, transform(phylum, phylum = phylum), sum)
+rownames(phylum) <- phylum$phylum
+phylum$phylum <- NULL
+head(phylum)
+phylum.transposed <- as.data.frame(t(as.matrix(phylum)))
+rownames(phylum.transposed) <- colnames(phylum)
+colnames(phylum.transposed) <- rownames(phylum)
+
+metadata <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/metadata.csv")
+metadata <- metadata[c(1:24),]
+phylum.all <- as.data.frame(c(metadata, phylum.transposed))
+phylum.all[c(91:112)] <- sapply(phylum.all[c(91:112)],as.numeric)
+phylum.ggplot <- pivot_longer(phylum.all, cols = Acidobacteria:Verrucomicrobia, names_to = "phylum", values_to = "count")
+phylum.ggplot$Sample <- phylum.ggplot$ï..Sample
+
+phylum_pal <- cal_palette(name = "dudleya", n = 22, type = "continuous")
+
+
+ggplot(phylum.ggplot, aes(fill = phylum, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw() + scale_fill_manual(values = phylum_pal)
+
+```
+
+```{r}
+
+cyanobacteria <- all.taxa.df %>%  filter(phylum == "Cyanobacteria") %>% dplyr::select(genus, bsc1:bsc24)
+cyanobacteria[c(2:25)] <- sapply(cyanobacteria[c(2:25)],as.numeric)
+cyanobacteria <- aggregate(. ~ genus, transform(cyanobacteria, genus = genus), sum)
+rownames(cyanobacteria) <- cyanobacteria$genus
+cyanobacteria$genus <- NULL
+cyanobacteria.transposed <- as.data.frame(t(as.matrix(cyanobacteria)))
+rownames(cyanobacteria.transposed) <- colnames(cyanobacteria)
+colnames(cyanobacteria.transposed) <- rownames(cyanobacteria)
+
+cyanobacteria.all <- as.data.frame(c(metadata, cyanobacteria.transposed))
+cyanobacteria.all[c(91:106)] <- sapply(cyanobacteria.all[c(91:106)],as.numeric)
+cyanobacteria.ggplot <- pivot_longer(cyanobacteria.all, cols = Acaryochloris:Trichodesmium, names_to = "genus", values_to = "count")
+cyanobacteria.ggplot$Sample <- cyanobacteria.ggplot$ï..Sample
+
+
+ggplot(cyanobacteria.ggplot, aes(fill = genus, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw()
+
+```
+
+```{r}
+
+ascomycota <- all.taxa.df %>%  filter(phylum == "Ascomycota") %>% dplyr::select(genus, bsc1:bsc24)
+ascomycota[c(2:25)] <- sapply(ascomycota[c(2:25)],as.numeric)
+ascomycota <- aggregate(. ~ genus, transform(ascomycota, genus = genus), sum)
+rownames(ascomycota) <- ascomycota$genus
+ascomycota$genus <- NULL
+ascomycota.transposed <- as.data.frame(t(as.matrix(ascomycota)))
+rownames(ascomycota.transposed) <- colnames(ascomycota)
+colnames(ascomycota.transposed) <- rownames(ascomycota)
+
+ascomycota.all <- as.data.frame(c(metadata, ascomycota.transposed))
+ascomycota.all[c(91:111)] <- sapply(ascomycota.all[c(91:111)],as.numeric)
+ascomycota.ggplot <- pivot_longer(ascomycota.all, cols = Ajellomyces:Uncinocarpus, names_to = "genus", values_to = "count")
+ascomycota.ggplot$Sample <- ascomycota.ggplot$ï..Sample
+
+
+
+
+ggplot(ascomycota.ggplot, aes(fill = genus, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw()
+
+
+```
+
+```{r}
+phylum <- all.taxa.df %>% dplyr::select(phylum, bsc1:bsc24)
+phylum[c(2:25)] <- sapply(phylum[c(2:25)],as.numeric)
+phylum <- aggregate(. ~ phylum, transform(phylum, phylum = phylum), sum)
+rownames(phylum) <- phylum$phylum
+phylum$phylum <- NULL
+phylum.transposed <- as.data.frame(t(as.matrix(phylum)))
+rownames(phylum.transposed) <- colnames(phylum)
+colnames(phylum.transposed) <- rownames(phylum)
+
+phylum.all <- as.data.frame(c(metadata, phylum.transposed))
+phylum.all[c(91:111)] <- sapply(phylum.all[c(91:111)],as.numeric)
+phylum.ggplot <- pivot_longer(phylum.all, cols = Acidobacteria:Verrucomicrobia, names_to = "phylum", values_to = "count")
+phylum.ggplot$Sample <- phylum.ggplot$ï..Sample
+
+numcols <- 22
+phylum_cols <- colorRampPalette(brewer.pal(8, "Set1"))(numcols)
+
+
+ggplot(phylum.ggplot, aes(fill = phylum, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw() + scale_fill_manual(values = phylum_cols)
+
+Anova(lm(One.Percent ~ treatment* site, data = phylum.all)) # differs by site 
+Anova(lm(Planctomycetes ~ treatment* site, data = phylum.all)) # differs by site, almost by treatment
+
+```
+
+```{r heat map}
+
+phylum.all$sample <- phylum.all$ï..Sample
+heatmap <- phylum.all %>% dplyr::select(site, treatment,sample,Acidobacteria:Verrucomicrobia)
+row.names(heatmap) <- heatmap$sample
+rowsidecolors <- c("red","red", "red", "red", "blue", "blue", "blue", "blue","red","red", "red", "red", "blue", "blue", "blue", "blue","red","red", "red", "red", "blue", "blue", "blue", "blue")
+heatmap <- heatmap[-c(1:3)]
+heatmap <- as.matrix(heatmap)
+heatmap(heatmap, na.rm = FALSE, scale = "column", Colv = NA, Rowv = NA, RowSideColors = rowsidecolors)
+
+# burn only 
+heatmap <- phylum.all %>% filter(treatment == "burn") %>%  dplyr::select(site, treatment,sample,Acidobacteria:Verrucomicrobia)
+row.names(heatmap) <- heatmap$sample
+heatmap <- heatmap[-c(1:3)]
+heatmap <- as.matrix(heatmap)
+heatmap(heatmap, na.rm = FALSE, scale = "column", Colv = NA, Rowv = NA)
+
+
+```
+
+
+```{r combine cover and cyanobacteria}
+
+cyanocover <- data %>% filter(Sample.Year =="2018", Treatment != "rx/wild")
+cyanocover <- cyanocover[-c(253:280),]
+cyanocover.short <- cyanocover %>% group_by(Site, Treatment) %>% summarize_at(vars(cyano:Total),list(mean = mean))
+
+cyanobacteria.short <- cyanobacteria.all %>% group_by(treatment, site) %>% summarize_at(vars(Acaryochloris:Trichodesmium), list(mean=mean))
+
+cyanocover.short$treatment <- cyanocover.short$Treatment
+cyanocover.short$site <- cyanocover.short$Site
+cyanobacteria.short$treatment <- c("rx", "rx", "wild", "none", "none", "none")
+
+hist(log(cyano.cover.micro$Total_mean))
+
+cyano.cover.micro <- merge(cyanocover.short, cyanobacteria.short, by = c("treatment", "site"))
+cyano.cover.micro$cyanoTotal <- sum(cyano.cover.micro$Acaryochloris_mean:cyano.cover.micro$Trichodesmium_mean)
+total_cyano_mod <- lm(cyano_mean ~ Microcoleus_mean, data = cyano.cover.micro)
+Anova(total_cyano_mod) 
+
+# [1] "treatment"                "site"                     "Acaryochloris_mean"      
+# [4] "Anabaena_mean"            "Arthrospira_mean"         "Crocosphaera_mean"       
+# [7] "Cyanothece_mean"          "Gloeobacter_mean"         "Lyngbya_mean"            
+# [10] "Microcoleus_mean"         "Microcystis_mean"         "Nodularia_mean"          
+# [13] "Nostoc_mean"              "Oscillatoria_mean"        "Synechococcus_mean"      
+# [16] "Synechocystis_mean"       "Thermosynechococcus_mean" "Trichodesmium_mean" 
+
+
+ggplot(data = cyano.cover.micro, aes(x = cyano_mean, y = Microcoleus_mean)) + geom_point() + theme_bw()
+
+
+```
+
+```{r }
+
+ascomycota.short <- ascomycota.all %>% group_by(treatment, site) %>% summarize_at(vars(Ajellomyces:Uncinocarpus), list(mean=mean))
+ascomycota.short$treatment <- c("rx", "rx", "wild", "none", "none", "none")
+
+lichen.cover.micro <- merge(cyanocover.short, ascomycota.short, by = c("treatment", "site"))
+lichen.cover.micro$lichenTotal <- sum(lichen.cover.micro$Ajellomyces_mean:lichen.cover.micro$Uncinocarpus_mean)
+
+total_lichen_mod <- lm(Lichen_mean ~ Penicillium_mean^2, data = lichen.cover.micro)
+Anova(total_lichen_mod) 
+
+#  [1] "treatment"             "site"                  "Ajellomyces_mean"     
+# [4] "Arthroderma_mean"      "Aspergillus_mean"      "Botryotinia_mean"     
+ #[7] "Chaetomium_mean"       "Coccidioides_mean"     "Emericella_mean"      
+#[10] "Gibberella_mean"       "Magnaporthe_mean"      "Nectria_mean"         
+#[13] "Neosartorya_mean"      "Neurospora_mean"       "Paracoccidioides_mean"
+#[16] "Penicillium_mean"      "Phaeosphaeria_mean"    "Podospora_mean"       
+#[19] "Pyrenophora_mean"      "Sclerotinia_mean"      "Talaromyces_mean"     
+#[22] "Tuber_mean"            "Uncinocarpus_mean" 
+formula <- lichen.cover.micro$Lichen_mean ~ lichen.cover.micro$Penicillium_mean^2
+ggplot(data = lichen.cover.micro, aes(x = Lichen_mean, y = Penicillium_mean)) + geom_point() + theme_bw() + geom_smooth()
+
+```
+
+```{r}
+# find the percentage of each group 
+
+View(all.taxa)
+all.taxa$domain <- all.taxa$ï..domain
+archaea <- all.taxa %>% filter(domain == "Archaea")
+bacteria <- all.taxa %>% filter(domain == "Bacteria")
+eukaryota <- all.taxa %>% filter(domain =="Eukaryota")
+viruses <- all.taxa %>% filter(domain == "Viruses")
+
+per.archaea = (sum(archaea[7:30])/sum(all.taxa[7:30]))*100 # 0.5 % Archaea
+per.bacteria = (sum(bacteria[7:30])/sum(all.taxa[7:30]))*100 # 91.14 % Bacteria
+per.eukaryota = (sum(eukaryota[7:30])/sum(all.taxa[7:30]))*100 # 6.26% Eukaryote
+per.viruses = (sum(viruses[7:30])/sum(all.taxa[7:30]))*100 # 2.10% viruses 
+
+actino <- all.taxa %>% filter(phylum == "Actinobacteria")
+sum(actino[7:30])/sum(all.taxa[7:30])
+
+proteo <- all.taxa %>% filter(phylum == "Proteobacteria")
+sum(proteo[7:30])/sum(all.taxa[7:30])
+
+cyano <- all.taxa %>% filter(phylum == "Cyanobacteria")
+sum(cyano[7:30])/sum(all.taxa[7:30])
+
+
+
+```
