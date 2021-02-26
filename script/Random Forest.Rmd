@@ -1,0 +1,561 @@
+---
+title: "Random Forest"
+author: "Brianne"
+date: "2/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries}
+library(tidyverse)
+library(randomForest)
+library(dismo)
+library(gbm)
+```
+
+The next step is to load the data for bulk (Ben's SCI), biocrust, and plants. Since there are different number of rows for each dataset, when I upload them, I also adjust the row numbers to match. For bulk and bsc, I am only using the top 200 most abundant genera 
+
+```{r bulk data}
+bulk <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/Ben_sci_taxon_rel_abund.csv")
+bulk.metadata <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/metagenomics/data/metadata_bulk.csv")
+
+bulk.genus <- bulk %>%  dplyr::select(genus, bulk1:bulk40)
+
+bulk.genus <- aggregate(. ~ genus, transform(bulk.genus, genus = genus), sum)
+
+# The first column is actually the row names
+rownames(bulk.genus) <- bulk.genus$genus
+bulk.genus$genus <- NULL
+head(bulk.genus)
+bulk.genus.transposed <- data.frame(t((bulk.genus)))
+rownames(bulk.genus.transposed) <- colnames(bulk.genus)
+colnames(bulk.genus.transposed) <- rownames(bulk.genus)
+
+bulk.all <- as.data.frame(c(bulk.metadata, bulk.genus.transposed))
+bulk.all <- bulk.all %>% rename(Sample = ï..Sample)
+bulk.all <- bulk.all[-c(1,23,34,40,45, 17, 30,9),]
+
+
+bulk.genus.only <- bulk.all[-c(1:90)]
+bulk.genus.sums.long <- gather(bulk.genus.only, genus, n, 1:1117)
+bulk.genus.sums.long$n <- as.numeric(bulk.genus.sums.long$n)
+bulk.sum_genus <- aggregate(n ~ genus, data=bulk.genus.sums.long, sum)
+
+bulk.genera  <- bulk.sum_genus$genus [order (bulk.sum_genus$n, decreasing = TRUE)]
+bulk.genera.order <- subset(bulk.sum_genus, genus %in% bulk.genera[1:200])
+
+bulk.names <- bulk.genera.order$genus
+bulk.name.use <- bulk.genus.only[names(bulk.genus.only) %in% bulk.names]
+bulk <- data.frame(bulk.all[-c(91:1207)], bulk.name.use)
+```
+
+
+```{r bsc data}
+
+all.taxa <- read.csv("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/data/taxon_rel_abund_edited_Feb2021.csv")
+metadata <- read.csv("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/data/metadata.csv")
+metadata <- metadata[c(1:24),]
+
+bsc.genus <- all.taxa %>%  dplyr::select(genus, X1:X24)
+
+# The first column is actually the row names
+rownames(bsc.genus) <- bsc.genus$genus
+bsc.genus$genus <- NULL
+bsc.genus.transposed <- data.frame(t((bsc.genus)))
+rownames(bsc.genus.transposed) <- colnames(bsc.genus)
+colnames(bsc.genus.transposed) <- rownames(bsc.genus)
+
+bsc.all <- as.data.frame(c(metadata, bsc.genus.transposed))
+bsc.all <- bsc.all %>% rename(Sample = ï..Sample)
+
+bsc.genus.only <- bsc.all[-c(1:90)]
+bsc.genus.sums.long <- gather(bsc.genus.only, genus, n, 1:940)
+bsc.genus.sums.long$n <- as.numeric(bsc.genus.sums.long$n)
+bsc.sum_genus <- aggregate(n ~ genus, data=bsc.genus.sums.long, sum)
+
+bsc.genera  <- bsc.sum_genus$genus [order (bsc.sum_genus$n, decreasing = TRUE)]
+bsc.genera.order <- subset(bsc.sum_genus, genus %in% bsc.genera[1:200])
+
+bsc.names <- bsc.genera.order$genus
+bsc.name.use <- bsc.genus.only[names(bsc.genus.only) %in% bsc.names]
+bsc <- data.frame(metadata,bsc.name.use)
+
+```
+
+```{r macro and plants}
+macro <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/BSC_SCI/biocrust/data/sci_bsc_2018_2019.csv")
+
+macro <- macro %>% filter(Sample.Year == "2018", Site != "rc")
+
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+plants <- plants %>% filter(Year == 2018, Site != "RC") 
+plants$Cover <- as.numeric(plants$Cover)
+ng.cov <- plants %>% filter(Funct.Gp == "ng") %>% mutate(ng.cov = mean(Cover))
+plants <- merge(plants, ng.cov, all = TRUE)
+nng.cov <- plants %>% filter(Funct.Gp == "nng") %>% mutate(nng.cov = mean(Cover))
+plants <- merge(plants, nng.cov, all = TRUE)
+nnf.cov <- plants %>% filter(Funct.Gp == "nnf") %>% mutate(nnf.cov = mean(Cover))
+plants <- merge(plants, nnf.cov, all = TRUE)
+nf.cov <- plants %>% filter(Funct.Gp == "nf") %>% mutate(nf.cov = mean(Cover))
+plants <- merge(plants, nf.cov, all = TRUE)
+plants[is.na(plants)] <- 0
+plants$ID <- plants$ï..Ref
+
+plants$Cover <- as.numeric(plants$Cover)
+plants <- plants %>% group_by(Site, Treatment, Quad, Year, Code, ID)
+plants <- plants %>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean))
+
+plants[is.na(plants)] <- 0
+ #this is goving me a weird number of rows, need to redo , see the Random Forest r workbook
+
+plants <- plants %>% group_by(Site, Treatment, Year, ID, Quad) %>% summarize_at(vars(ng.cov:VIOPED),list(mean = mean))
+```
+
+Combine the datasets together in pairs 
+
+Make Macro-Plant
+```{r}
+
+#plants is missing PGE burn 1 B, PGEB2C
+macro_rm <- macro[-c(2,7),]
+macro_plant <- data.frame(macro_rm, plants)
+
+
+macro_plant$Treatment <- as.factor(macro_plant$Treatment)
+macro_plant$Site <- as.factor(macro_plant$Site)
+
+```
+
+Make Macro-BSC
+```{r}
+macro_short <- macro %>% dplyr::select(Site, Treatment, Per.Cyano, Per.Lichen, Per.Moss, Per.Total) %>% 
+    group_by(Site, Treatment) %>% summarize(Per.Cyano = mean(Per.Cyano), Per.Lichen = mean(Per.Lichen), Per.Moss = mean(Per.Moss), Per.Total = mean(Per.Total))
+
+pgwburn <- data.frame(rbind(macro_short[3,],macro_short[3,],macro_short[3,],macro_short[3,]))
+pgwcont <- data.frame(rbind(macro_short[4,],macro_short[4,],macro_short[4,],macro_short[4,]))
+pgeburn <- data.frame(rbind(macro_short[1,],macro_short[1,],macro_short[1,],macro_short[3,]))
+pgecont <- data.frame(rbind(macro_short[2,],macro_short[2,],macro_short[2,],macro_short[4,]))
+rcburn <- data.frame(rbind(macro_short[5,],macro_short[5,],macro_short[5,],macro_short[5,]))
+rccont <- data.frame(rbind(macro_short[6,],macro_short[6,],macro_short[6,],macro_short[6,]))
+
+macro_short <-data.frame(rbind(pgwburn, pgwcont, pgeburn, pgecont, rcburn, rccont))
+
+macro_bsc <- data.frame(macro_short, bsc)
+```
+
+```{r make bsc macro }
+bsc_macro <- bsc %>% 
+    group_by(site, treatment) %>% summarize_at(vars(Methanosarcina:Microvirus),list(mean = mean))
+
+n <- 40
+
+pgwburn <- do.call("rbind", replicate(n, bsc_macro[3,], simplify = FALSE))
+pgwcont <- do.call("rbind", replicate(n, bsc_macro[4,], simplify = FALSE))
+pgeburn <- do.call("rbind", replicate(n, bsc_macro[1,], simplify = FALSE))
+pgecont <-do.call("rbind", replicate(n, bsc_macro[2,], simplify = FALSE))
+
+n <- 80
+rcburn <- do.call("rbind", replicate(n, bsc_macro[5,], simplify = FALSE))
+rccont <- do.call("rbind", replicate(n, bsc_macro[6,], simplify = FALSE))
+bsc_macro <- data.frame(rbind(pgeburn, pgecont, pgwburn, pgwcont,rcburn, rccont))
+bsc_macro <- data.frame(bsc_macro, macro)
+
+```
+
+Make Macro-Bulk
+```{r}
+# remove RC because Ben did not sample RC 
+
+macro <- macro %>% filter(Sample.Year == "2018", Site != "rc")
+
+bulk_long <- bulk %>% 
+    group_by(site, treatment) %>% summarize_at(vars(Achromobacter:Zymomonas),list(mean = mean))
+
+
+n <- 40
+
+pgwburn <- do.call("rbind", replicate(n, bulk_long[3,], simplify = FALSE))
+pgwcont <- do.call("rbind", replicate(n, bulk_long[4,], simplify = FALSE))
+pgeburn <- do.call("rbind", replicate(n, bulk_long[1,], simplify = FALSE))
+pgecont <-do.call("rbind", replicate(n, bulk_long[2,], simplify = FALSE))
+
+bulk_long <- data.frame(rbind(pgeburn, pgecont, pgwburn, pgwcont))
+
+
+macro_bulk <- data.frame(macro, bulk_long)
+
+```
+
+Make Plant- BSC
+```{r}
+
+bsc.pg <- bsc %>% filter(site != "rc")
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+plants <- plants %>% filter(Year == 2018, Site != "RC") 
+plants$Cover <- as.numeric(plants$Cover)
+ng.cov <- plants %>% filter(Funct.Gp == "ng") %>% mutate(ng.cov = mean(Cover))
+plants <- merge(plants, ng.cov, all = TRUE)
+nng.cov <- plants %>% filter(Funct.Gp == "nng") %>% mutate(nng.cov = mean(Cover))
+plants <- merge(plants, nng.cov, all = TRUE)
+nnf.cov <- plants %>% filter(Funct.Gp == "nnf") %>% mutate(nnf.cov = mean(Cover))
+plants <- merge(plants, nnf.cov, all = TRUE)
+nf.cov <- plants %>% filter(Funct.Gp == "nf") %>% mutate(nf.cov = mean(Cover))
+plants <- merge(plants, nf.cov, all = TRUE)
+plants <- plants %>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean)) 
+plants[is.na(plants)] <- 0
+plants_short <- plants %>% group_by(Site, Treatment, Year) %>% summarize_at(vars(ng.cov:VIOPED),list(mean = mean))
+
+pgwburn <- data.frame(rbind(plants_short[3,],plants_short[3,],plants_short[3,],plants_short[3,]))
+pgwcont <- data.frame(rbind(plants_short[4,],plants_short[4,],plants_short[4,],plants_short[4,]))
+pgeburn <- data.frame(rbind(plants_short[1,],plants_short[1,],plants_short[1,],plants_short[1,]))
+pgecont <- data.frame(rbind(plants_short[2,],plants_short[2,],plants_short[2,],plants_short[2,]))
+
+plants_short <- data.frame(rbind(pgwburn, pgwcont, pgeburn, pgecont))
+
+bsc_plant <- data.frame(plants_short, bsc.pg)
+
+
+bsc_short <- bsc.pg %>% group_by(site, treatment) %>% summarize_at(vars(Methanosarcina:Microvirus), list(mean = mean))
+
+n <- 10
+
+pgwburn <- do.call("rbind", replicate(n, bsc_short[3,], simplify = FALSE))
+pgwcont <- do.call("rbind", replicate(n, bsc_short[4,], simplify = FALSE))
+pgeburn <- do.call("rbind", replicate(n, bsc_short[1,], simplify = FALSE))
+pgecont <-do.call("rbind", replicate(n, bsc_short[2,], simplify = FALSE))
+
+bsc_short <- data.frame(rbind(pgeburn, pgecont, pgwburn, pgwcont))
+plants <- read.csv("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/R WorkBooks/SCI Plants/data/all_plants.csv")
+plants <- plants %>% filter(Year == 2018, Site != "RC") 
+plants$Cover <- as.numeric(plants$Cover)
+ng.cov <- plants %>% filter(Funct.Gp == "ng") %>% mutate(ng.cov = mean(Cover))
+plants <- merge(plants, ng.cov, all = TRUE)
+nng.cov <- plants %>% filter(Funct.Gp == "nng") %>% mutate(nng.cov = mean(Cover))
+plants <- merge(plants, nng.cov, all = TRUE)
+nnf.cov <- plants %>% filter(Funct.Gp == "nnf") %>% mutate(nnf.cov = mean(Cover))
+plants <- merge(plants, nnf.cov, all = TRUE)
+nf.cov <- plants %>% filter(Funct.Gp == "nf") %>% mutate(nf.cov = mean(Cover))
+plants <- merge(plants, nf.cov, all = TRUE)
+plants <- plants %>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean)) 
+plants[is.na(plants)] <- 0
+plants$ID <- plants$ï..Ref
+plants <-  plants %>% group_by(Site, Treatment, Year, ID) %>% summarize_at(vars(ng.cov:VIOPED),list(mean = mean))
+
+plant_bsc <- data.frame(bsc_short, plants)
+
+```
+
+Make Plant-Bulk
+```{r}
+
+plant_bulk <- data.frame(plants, bulk)
+
+```
+
+Make BSC - Bulk
+
+```{r}
+
+
+bulk <- bulk %>% mutate_at(c(91:290), as.numeric)
+
+bulk_short <- bulk %>% 
+    group_by(site, treatment) %>% summarize_at(vars(Achromobacter:Zymomonas),list(mean = mean))
+
+pgwburn <- data.frame(rbind(bulk_short[3,],bulk_short[3,],bulk_short[3,],bulk_short[3,]))
+pgwcont <- data.frame(rbind(bulk_short[4,],bulk_short[4,],bulk_short[4,],bulk_short[4,]))
+pgeburn <- data.frame(rbind(bulk_short[1,],bulk_short[1,],bulk_short[1,],bulk_short[3,]))
+pgecont <- data.frame(rbind(bulk_short[2,],bulk_short[2,],bulk_short[2,],bulk_short[4,]))
+
+bulk_short <- data.frame(rbind(pgwburn, pgwcont, pgeburn, pgecont))
+
+bsc_bulk <- data.frame(bulk_short, bsc)
+bsc_bulk <- bsc_bulk[-c(1121:1209)]
+
+```
+
+## Begin Random Forest Analysis 
+
+```{r Random Forest for macro_plant}
+#relative influence of plants on the total macro bsc cover 
+
+macro_plant <- macro_plant %>% mutate_at(c(23:66), as.numeric)
+
+rf <- randomForest(Per.Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(3,6,10,23:66)])
+
+print(rf) # 32.49,32.17
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+importanceOrder=order(-rf$importance)
+names=rownames(rf$importance)[importanceOrder]
+
+rf_pred <- predict(rf, macro_plant[c(3,6,10,23:66)]) # predictions
+caret::postResample(rf_pred, macro_plant$Per.Total)
+
+```
+
+```{r rf for plant functional groups}
+
+rf <- randomForest(Per.Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(3,6,10,19:22)])
+
+print(rf)   
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf, macro_plant[c(3,6,10,19:22)]) # predictions
+caret::postResample(rf_pred, macro_plant$Per.Total)
+
+
+```
+
+```{r rf for influence of BSC microbes on BSC cover }
+
+#relative influence of bsc microbes on the total macro bsc cover 
+
+
+rf <- randomForest(Per.Total ~ ., ntree = 1000, importance = TRUE, data = bsc_macro[c(1:202, 212)])
+
+print(rf)
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf,bsc_macro[c(1:202, 212)]) # predictions
+caret::postResample(rf_pred, bsc_macro$Per.Total)
+
+
+
+```
+
+
+```{r rf for influence of bulk microbes on BSC cover }
+
+#relative influence of bulk microbes on the total macro bsc cover 
+macro_bulk$Site <- as.factor(macro_bulk$Site)
+macro_bulk$Treatment <- as.factor(macro_bulk$Treatment)
+macro_bulk <- macro_bulk %>% mutate_at(c(16:215), as.numeric)
+
+rf <- randomForest(Per.Total ~ ., ntree = 1000, importance = TRUE, data = macro_bulk[c(3,6,16:215,10)])
+
+print(rf)
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf,macro_bulk[c(3,6,16:215,10)]) # predictions
+caret::postResample(rf_pred, macro_bulk$Per.Total)
+
+```
+
+
+```{r plant cover + bsc cover }
+
+plant_bsc <- plant_bsc %>% mutate(plantCover = rowSums(.[211:254]))
+
+rf <- randomForest(plantCover ~ ., ntree = 1000, importance = TRUE, data = plant_bsc[c(1:202,255)])
+#51.3, 51.47
+
+print(rf)
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf,plant_bsc[c(1:202,255)]) # predictions
+caret::postResample(rf_pred, plant_bsc$plantCover)
+
+
+
+native_bsc <- plant_bsc %>% mutate(nativeCover = rowSums(.[207:208]))
+
+rf <- randomForest(nativeCover ~ ., ntree = 1000, importance = TRUE, data = native_bsc[c(1:202,256)])
+#51.3, 51.47
+
+print(rf)
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf,native_bsc[c(1:202,255)]) # predictions
+caret::postResample(rf_pred, native_bsc$nativeCover)
+
+nonnative_bsc <- plant_bsc %>% mutate(nonnativeCover = rowSums(.[209:210]))
+
+rf <- randomForest(nonnativeCover ~ ., ntree = 1000, importance = TRUE, data = nonnative_bsc[c(1:202,256)])
+#51.3, 51.47
+
+print(rf)
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf,nonnative_bsc[c(1:202,255)]) # predictions
+caret::postResample(rf_pred, nonnative_bsc$nonnativeCover)
+
+
+```
+
+```{r plant cover + bulk microbe }
+
+plant_bulk <- plant_bulk %>% mutate(plantCover = rowSums(.[9:52]))
+
+rf <- randomForest(plantCover ~ ., ntree = 1000, importance = TRUE, data = plant_bulk[c(1,2,143:343)])
+
+
+print(rf)
+VI_F = importance(rf)
+varImpPlot(rf,type=1)
+
+rf_pred <- predict(rf,plant_bulk[c(1,2,143:343)]) # predictions
+caret::postResample(rf_pred, plant_bulk$plantCover)
+```
+
+
+```{r random forest to determine burned/control from datasets}
+library(caTools)
+library(pROC)
+
+macro$Treatment <- as.factor(macro$Treatment)
+macro[is.na(macro)] <- 0
+
+smp_size <- floor(0.75 * nrow(macro))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(macro)), size = smp_size)
+train <- macro[train_ind,]
+test <- macro[-train_ind,]
+
+rf <- randomForest(Treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(6:10)])
+print(rf)
+varImpPlot(rf)
+predicion_for_table <- predict(rf, test[,-6])
+table(observed = test[,6], predicted = predicion_for_table)
+rf.roc <- roc(train$Treatment, rf$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+
+```
+
+```{r rf bsc microbes and treatment }
+
+bsc$treatment <- as.factor(bsc$treatment)
+bsc[is.na(bsc)] <- 0
+
+smp_size <- floor(0.75 * nrow(bsc))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(bsc)), size = smp_size)
+train <- bsc[train_ind,]
+test <- bsc[-train_ind,]
+
+rf <- randomForest(treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(3,91:290)])
+print(rf)
+varImpPlot(rf)
+predicion_for_table <- predict(rf, test[,-3])
+table(observed = test[,3], predicted = predicion_for_table)
+rf.roc <- roc(train$treatment, rf$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+
+
+```
+
+```{r rf bulk microbes and treatment }
+
+bulk$treatment <- as.factor(bulk$treatment)
+bulk[is.na(bulk)] <- 0
+
+smp_size <- floor(0.75 * nrow(bulk))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(bulk)), size = smp_size)
+train <- bulk[train_ind,]
+test <- bulk[-train_ind,]
+
+rf <- randomForest(treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(4,91:290)])
+print(rf)
+varImpPlot(rf)
+predicion_for_table <- predict(rf, test[,-4])
+table(observed = test[,4], predicted = predicion_for_table)
+rf.roc <- roc(train$treatment, rf$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+
+
+```
+
+```{r rf plant and treatment }
+
+plants$Treatment <- as.factor(plants$Treatment)
+plants[is.na(plants)] <- 0
+
+smp_size <- floor(0.75 * nrow(plants))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(plants)), size = smp_size)
+train <- plants[train_ind,]
+test <- plants[-train_ind,]
+
+rf <- randomForest(Treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(2,9:52)])
+print(rf)
+varImpPlot(rf)
+test$Treatment <- as.factor(test$Treatment)
+predicion_for_table <- predict(rf, test[,-2])
+table(observed = test[,2], predicted = predicion_for_table)
+rf.roc <- roc(train$Treatment, rf$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+
+
+```
+```{r plot most important vaiables from rf and biocrust cover}
+
+#PTEDRY
+
+ggplot(data = macro_plant, aes(x = Per.Total, y = PTEDRY_mean)) + geom_point(aes(color = Treatment)) + geom_smooth(aes(color = Treatment), method = 'glm') + theme_bw()
+
+#Total Plant Cover 
+macro_plant <- macro_plant %>% mutate(plantCover = rowSums(.[23:66]))
+
+ggplot(data = macro_plant, aes(x = plantCover, y = Per.Total)) + geom_point(aes(color = Treatment)) + geom_smooth(aes(color = Treatment), method = 'glm') + theme_bw()
+
+#microcystis
+
+ggplot(data = macro_bsc, aes(x = Per.Total, y = Microcystis)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+# Synechocystis
+
+ggplot(data = macro_bsc, aes(x = Per.Total, y = Synechocystis)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+#Phaeosphaeria
+
+ggplot(data = macro_bulk, aes(x = Per.Total, y = Phaeosphaeria_mean)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+# Geobacillus
+bsc_plant <- bsc_plant %>% mutate(plantCover = rowSums(.[8:51]))
+ggplot(data = bsc_plant, aes(x = plantCover, y = Geobacillus)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+# Dechloromona
+ggplot(data = bsc_plant, aes(x = plantCover, y = Dechloromonas)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+#Sorangium
+plant_bulk$Sorangium <- as.numeric(plant_bulk$Sorangium)
+ggplot(data = plant_bulk, aes(x = plantCover, y = Sorangium)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+#Gemmatoimonas
+plant_bulk$Gemmatimonas <- as.numeric(plant_bulk$Gemmatimonas)
+ggplot(data = plant_bulk, aes(x = plantCover, y = Gemmatimonas)) + geom_point(aes(color = Treatment)) + geom_smooth(method = 'glm') + theme_bw()
+
+# Plancetomyces
+
+ggplot(data = bsc, aes(x = treatment, y = Planctomyces)) + geom_boxplot(aes(fill = treatment))+ theme_bw()
+
+
+# Bordetella
+ggplot(data = bsc, aes(x = treatment, y = Bordetella)) + geom_boxplot(aes(fill = treatment))+ theme_bw()
+
+# Geodermatophilus 
+bulk$Geodermatophilus <- as.numeric(bulk$Geodermatophilus)
+ggplot(data = bulk, aes(x = treatment, y = Geodermatophilus)) + geom_boxplot(aes(fill = treatment))+ theme_bw()
+
+# EROBOT
+ggplot(data = plants, aes(x = Treatment, y = EROBOT_mean)) + geom_boxplot(aes(fill = Treatment))+ theme_bw()
+
+# SONOLE
+ggplot(data = plants, aes(x = Treatment, y = SONOLE_mean)) + geom_boxplot(aes(fill = Treatment))+ theme_bw()
+
+```
+
