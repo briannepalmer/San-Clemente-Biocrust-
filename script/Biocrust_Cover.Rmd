@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/Brianne/Documents/San-Clemente-Biocrust-/")
+
 ```
 
 ```{r load libraries}
@@ -19,7 +21,6 @@ library(multcomp)
 library(ggpubr)
 library(predictmeans)
 library(lattice)
-
 ```
 
 ```{r load data}
@@ -34,7 +35,7 @@ boxplot.stats(data$total.log)$out # no outliers when total cover is log transfor
 
 ```
 
-The goal of this script is to describe the changes to biocrust cover on SCI. Other scripts will look at the plant community and microbial community 
+The goal of this script is to describe the changes to biocrust cover on SCI. Other scripts will look at the plant community and microbial community.
 
 ```{r total biocrust model}
 
@@ -67,8 +68,11 @@ boxplot(total.log ~ Treatment, data = data)
 summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
+```
 
-
+Because sampling was different in 2020, I need to run two different anlalysis to compare 2018 and 2019 while 2020 stands alone can cannot be compared 
+```{r}
+# all cyano
 cyanomod.log <- lmer(log(cyano +1) ~ Treatment + Sample.Year + Site + (1|Plot), data = data)
 residplot(cyanomod.log)
 Anova(cyanomod.log)
@@ -76,7 +80,23 @@ summary(glht(cyanomod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(cyanomod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(cyanomod.log, linfct = mcp(Site= "Tukey")))
 
+# cyano 2018 and 2019
+cyanomod.log <- lmer(log(cyano +1) ~ Treatment + Sample.Year + Site + (1|Plot), data = data %>% filter(Sample.Year != "2020"))
+residplot(cyanomod.log)
+Anova(cyanomod.log)
+summary(glht(cyanomod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(cyanomod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(cyanomod.log, linfct = mcp(Site= "Tukey")))
 
+# cyano 2020 only 
+cyanomod.log <- lmer(log(cyano +1) ~ Treatment + Site + (1|Plot), data = data %>% filter(Sample.Year == "2020"))
+residplot(cyanomod.log)
+Anova(cyanomod.log)
+summary(glht(cyanomod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(cyanomod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(cyanomod.log, linfct = mcp(Site= "Tukey")))
+
+# all lichen 
 lichenmod.log <- lmer(log(Lichen +1) ~ Treatment + Sample.Year + Site + (1|Plot), data = data)
 residplot(lichenmod.log)
 Anova(lichenmod.log)
@@ -84,13 +104,53 @@ summary(glht(lichenmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(lichenmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(lichenmod.log, linfct = mcp(Site= "Tukey")))
 
+# lichen 2018 and 2019
+lichenmod.log <- lmer(log(Lichen +1) ~ Treatment + Sample.Year + Site + (1|Plot), data = data %>% filter(Sample.Year != "2020"))
+residplot(lichenmod.log)
+Anova(lichenmod.log)
+summary(glht(lichenmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(lichenmod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(lichenmod.log, linfct = mcp(Site= "Tukey")))
 
+# lichen 2020 only 
+lichenmod.log <- lmer(log(Lichen +1) ~ Treatment  + Site + (1|Plot), data = data %>% filter(Sample.Year == "2020"))
+residplot(lichenmod.log)
+Anova(lichenmod.log)
+summary(glht(lichenmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(lichenmod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(lichenmod.log, linfct = mcp(Site= "Tukey")))
+
+# all moss 
 mossmod.log <- lmer(log(Moss +1) ~ Treatment + Sample.Year + Site+ (1|Plot), data = data)
 residplot(mossmod.log)
 Anova(mossmod.log)
 summary(glht(mossmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(mossmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(mossmod.log, linfct = mcp(Site= "Tukey")))
+
+# moss 2018 and 2019 only 
+mossmod.log <- lmer(log(Moss +1) ~ Treatment + Sample.Year + Site+ (1|Plot), data = data %>% filter(Sample.Year != "2020"))
+residplot(mossmod.log)
+Anova(mossmod.log)
+summary(glht(mossmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(mossmod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(mossmod.log, linfct = mcp(Site= "Tukey")))
+
+# moss 2020 only 
+mossmod.log <- lmer(log(Moss +1) ~ Treatment + Site+ (1|Plot), data = data %>% filter(Sample.Year == "2020"))
+residplot(mossmod.log)
+Anova(mossmod.log)
+summary(glht(mossmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(mossmod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(mossmod.log, linfct = mcp(Site= "Tukey")))
+
+# mixed 2020 only 
+mixmod.log <- lmer(log(Mixed +1) ~ Treatment + Site+ (1|Plot), data = data %>% filter(Sample.Year == "2020"))
+residplot(mixmod.log)
+Anova(mixmod.log)
+summary(glht(mixmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(mixmod.log, linfct = mcp(Sample.Year = "Tukey")))
+summary(glht(mixmod.log, linfct = mcp(Site= "Tukey")))
 
 
 new.df <- data %>% dplyr::select(Site, Treatment, Sample.Year, cyano, Lichen, Moss, Mixed, Total) %>% pivot_longer(cols = c("cyano", "Lichen", "Moss", "Mixed"), values_to = "count") %>% mutate(percent = count/40)
