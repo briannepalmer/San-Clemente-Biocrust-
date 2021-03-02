@@ -24,7 +24,7 @@ library(lattice)
 ```
 
 ```{r load data}
-data <- read.csv("data/sci_bsc_18_19_20.csv")
+data <- read.csv("data/sci_bsc_18_19_20_editMarch2021.csv")
 qqnorm(data$Total)
 data$Total <- as.integer(data$Total)
 data$ID <- as.factor(data$ID)
@@ -69,6 +69,13 @@ summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
 ```
+```{r}
+ggplot(data=data, aes(x=Site, y= Total, fill = Treatment)) + geom_boxplot() + facet_grid(.~ Sample.Year) + geom_jitter(aes(color = Treatment))
+
+ggplot(data = data, aes(x = Sample.Year, y = Total, color = Treatment)) + geom_point(position = position_jitter(h=0.1, w=0.1), alpha = 0.5)+ facet_grid(. ~ Treatment) + theme_bw()
+
+ggplot(data = data, aes(x = Sample.Year, y = Total)) + geom_boxplot(outlier.shape = NA) + geom_jitter(alpha = 0.5, aes(color = Treatment, shape = Sample.Year)) + facet_grid(. ~ Treatment) +theme_bw() + theme(legend.position = "none") 
+```
 
 Because sampling was different in 2020, I need to run two different anlalysis to compare 2018 and 2019 while 2020 stands alone can cannot be compared 
 ```{r}
@@ -93,7 +100,6 @@ cyanomod.log <- lmer(log(cyano +1) ~ Treatment + Site + (1|Plot), data = data %>
 residplot(cyanomod.log)
 Anova(cyanomod.log)
 summary(glht(cyanomod.log, linfct = mcp(Treatment = "Tukey")))
-summary(glht(cyanomod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(cyanomod.log, linfct = mcp(Site= "Tukey")))
 
 # all lichen 
@@ -117,7 +123,6 @@ lichenmod.log <- lmer(log(Lichen +1) ~ Treatment  + Site + (1|Plot), data = data
 residplot(lichenmod.log)
 Anova(lichenmod.log)
 summary(glht(lichenmod.log, linfct = mcp(Treatment = "Tukey")))
-summary(glht(lichenmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(lichenmod.log, linfct = mcp(Site= "Tukey")))
 
 # all moss 
@@ -141,7 +146,6 @@ mossmod.log <- lmer(log(Moss +1) ~ Treatment + Site+ (1|Plot), data = data %>% f
 residplot(mossmod.log)
 Anova(mossmod.log)
 summary(glht(mossmod.log, linfct = mcp(Treatment = "Tukey")))
-summary(glht(mossmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(mossmod.log, linfct = mcp(Site= "Tukey")))
 
 # mixed 2020 only 
@@ -149,7 +153,6 @@ mixmod.log <- lmer(log(Mixed +1) ~ Treatment + Site+ (1|Plot), data = data %>% f
 residplot(mixmod.log)
 Anova(mixmod.log)
 summary(glht(mixmod.log, linfct = mcp(Treatment = "Tukey")))
-summary(glht(mixmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(mixmod.log, linfct = mcp(Site= "Tukey")))
 
 
@@ -177,7 +180,7 @@ head(df2)
 df2$Year <- as.numeric(df2$Sample.Year)
 
 pdf("figures/biocrust_cover.pdf")
-ggplot(df2, aes(x=Year, y=percent*100, group=Treatment, color=Treatment)) + 
+ggplot(df2 %>% filter(Sample.Year != "2020", name != "Mixed"), aes(x=Year, y=percent*100, group=Treatment, color=Treatment)) + 
   geom_line() + 
   geom_point()+ 
   geom_errorbar(aes(ymin=(percent-sd)*100, ymax=(percent+sd)*100), width=.2,
