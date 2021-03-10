@@ -1,0 +1,134 @@
+---
+title: "Plant Cover"
+author: "Brianne"
+date: "3/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/Brianne/Documents/San-Clemente-Biocrust-/")
+```
+
+```{r load libraries}
+library(tidyverse)
+library(MASS)
+library(lme4)
+library(car)
+library(emmeans)
+library(multcomp)
+library(ggpubr)
+library(predictmeans)
+library(lattice)
+```
+
+
+```{r load data}
+data <- read.csv("data/all_plants.csv")
+data <- data %>% filter(Year == c("2018", "2019"))
+data$Cover <- as.numeric(data$Cover)
+qqnorm(data$Cover)
+data$Cover.log <- log(data$Cover)
+boxplot.stats(data$Cover)$out
+boxplot.stats(data$Cover.log)$out
+data$Plot <- data$ï..Ref
+data$Year <- as.factor(data$Year)
+str(data)
+```
+
+
+```{r total biocrust model}
+
+data$cover.plus.1 <- data$Cover+1
+data$Cover.log <- log10(data$cover.plus.1)
+bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data, REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+residplot(bestmod.log)
+
+boxplot(Cover.log ~ Treatment, data = data)
+
+```
+
+
+```{r}
+#Tukey Post-Hoc Test 
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+```
+
+
+```{r total biocrust model}
+data$Density <- as.numeric(data$Density)
+data$density.plus.1 <- data$Density+1
+data$density.log <- log10(data$density.plus.1)
+bestmod.log <- lmer(density.log ~ Treatment + Year + Site + (1|Plot), data = data, REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+residplot(bestmod.log)
+
+boxplot(density.log ~ Treatment, data = data)
+
+```
+
+
+```{r}
+#Tukey Post-Hoc Test 
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
+```
+
+```{r}
+
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+df2 <- data_summary(data, varname="Cover", 
+                    groupnames=c("Treatment", "Year"))
+head(df2)
+
+df2$Year <- as.numeric(df2$Year)
+
+pdf("figures/plantcover.pdf")
+ggplot(df2, aes(x=Year, y=Cover, group=Treatment, fill=Treatment)) + 
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=(Cover), ymax=(Cover+sd)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() + 
+  facet_grid(. ~ Treatment) + 
+  scale_x_continuous(breaks = 1:2,
+    labels = c("2018", "2019")) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = "none")
+dev.off()
+
+
+df2 <- data_summary(data, varname="Density", 
+                    groupnames=c("Treatment", "Year"))
+df2$Year <- as.numeric(df2$Year)
+
+pdf("figures/plantdensity.pdf")
+ggplot(df2, aes(x=Year, y=Density, group=Treatment, fill=Treatment)) + 
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=(Density), ymax=(Density+sd)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() + 
+  facet_grid(. ~ Treatment) + 
+  scale_x_continuous(breaks = 1:2,
+    labels = c("2018", "2019")) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = "none")
+dev.off()
+
+```

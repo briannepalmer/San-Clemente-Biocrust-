@@ -1,0 +1,89 @@
+---
+title: "Plant Community"
+author: "Brianne"
+date: "3/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries}
+library(tidyverse)
+library(MASS)
+library(lme4)
+library(car)
+library(emmeans)
+library(multcomp)
+library(ggpubr)
+library(rcompanion)
+library(calecopal)
+library(MuMIn)
+library(vegan)
+library(pairwiseAdonis)
+```
+
+```{r microbial community}
+plants <- read.csv("data/all_plants.csv")
+plants <- plants %>% filter(Year == 2018) 
+plants$Cover <- as.numeric(plants$Cover)
+ng.cov <- plants %>% filter(Funct.Gp == "ng") %>% mutate(ng.cov = mean(Cover))
+plants <- merge(plants, ng.cov, all = TRUE)
+nng.cov <- plants %>% filter(Funct.Gp == "nng") %>% mutate(nng.cov = mean(Cover))
+plants <- merge(plants, nng.cov, all = TRUE)
+nnf.cov <- plants %>% filter(Funct.Gp == "nnf") %>% mutate(nnf.cov = mean(Cover))
+plants <- merge(plants, nnf.cov, all = TRUE)
+nf.cov <- plants %>% filter(Funct.Gp == "nf") %>% mutate(nf.cov = mean(Cover))
+plants <- merge(plants, nf.cov, all = TRUE)
+plants[is.na(plants)] <- 0
+plants$ID <- plants$ï..Ref
+
+plants$Cover <- as.numeric(plants$Cover)
+plants <- plants %>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean))
+
+plants[is.na(plants)] <- 0
+
+```
+This code will run a for loop to determine which genera varied with treatment. I haven't figure out how to do this in R yet but to figure out if there were any genera that differed, I called the list of genera with rownames(genera) then copired and pasted that and the p values from this fore loop into an excel sheet. Not very graceful, but it works..
+```{r}
+
+plants.only <- plants[c(104:153)]
+metadata <- plants[c(2,4,5,13:103)]
+
+for(i in plants.only){
+  eq <- lm(i ~ metadata$Treatment)
+  aov.p.value <- summary(aov(eq))[[1]]$'Pr(>F)'
+  print(aov.p.value)
+} 
+```
+
+```{r commmunity nmds}
+plant.nmds <- metaMDS(plants.only, trace = FALSE, trymax=100, "bray")
+plant.nmds$stress 
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = plants.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = plants.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$Treatment, site = metadata$Site) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+
+# make the NMDS plot
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = site)) + geom_point() + 
+  stat_ellipse() + theme_bw()
+
+# determine if the differene is significant by doing a PERMANOVA
+adonis(plant.only ~ Treatment, metadata) 
+
+pairwise.adonis(plant.only,factors=metadata$treatment)
+pairwise.adonis(plant.only,factors=metadata$site)
+
+env <- metadata[c(104:153)]
+
+env.fit <- envfit(plants.nmds,env , permutations = 999, na.rm = TRUE)
+
+env.fit$vectors
+
+```
