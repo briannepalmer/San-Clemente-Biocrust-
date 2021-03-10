@@ -16,6 +16,7 @@ library(randomForest)
 library(dismo)
 library(gbm)
 library(viridis)
+library(pROC)
 ```
 
 The next step is to load the data for bulk (Ben's SCI), biocrust, and plants. Since there are different number of rows for each dataset, when I upload them, I also adjust the row numbers to match. For bulk and bsc, I am only using the top 200 most abundant genera 
@@ -94,7 +95,12 @@ macro <- macro %>% filter(Sample.Year == "2018", Treatment != "wild")
 macro$ID <- macro$ï..Plot
 macro <- macro %>% group_by(Site, Treatment, Quad, ID)%>% summarize_at(vars(cyano:Total),list(mean = mean))
 macro <- macro%>% rename_at(.vars = vars(ends_with("_mean")), .funs = funs(sub("[_]mean$", "", .)))
-macro[is.na(macro)] <- 0
+macro <- macro[-8]
+# remove NAs 
+which(is.na(macro), arr.ind=TRUE)
+macro <- na.omit(macro)
+
+
  #####
 plants <- read.csv("data/all_plants.csv")
 plants <- plants %>% filter(Year == 2018) 
@@ -114,11 +120,14 @@ plants$Cover <- as.numeric(plants$Cover)
 plants <- plants %>% pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = mean))
 
 plants[is.na(plants)] <- 0
- #this is goving me a weird number of rows, need to redo , see the Random Forest r workbook
 
 plants <- plants %>% group_by(Site, Treatment, Quad, ID) %>% summarize_at(vars(ng.cov:VIOPED),list(mean = mean))
 
 plants <- plants %>% rename_at(.vars = vars(ends_with("_mean")), .funs = funs(sub("[_]mean$", "", .)))
+
+# remove the same rows as macro (where there were NAs)
+
+plants.rm <- plants[-c(206:208, 216:218, 225:228, 235:238),]
 
 ```
 
@@ -129,7 +138,7 @@ Make Macro-Plant
 
 #plants is missing PGE burn 1 B, PGEB2C
 macro_rm <- macro[-c(51,62),]
-macro_plant <- data.frame(macro_rm, plants)
+macro_plant <- data.frame(macro_rm, plants.rm)
 
 macro_plant$Treatment <- as.factor(macro_plant$Treatment)
 macro_plant$Site <- as.factor(macro_plant$Site)
@@ -159,12 +168,13 @@ bsc_macro <- bsc %>%
     group_by(site, treatment) %>% summarize_at(vars(Methanosarcina:Microvirus),list(mean = mean))
 
 n <- 40
-
 pgwburn <- do.call("rbind", replicate(n, bsc_macro[3,], simplify = FALSE))
 pgwcont <- do.call("rbind", replicate(n, bsc_macro[4,], simplify = FALSE))
 pgeburn <- do.call("rbind", replicate(n, bsc_macro[1,], simplify = FALSE))
 pgecont <-do.call("rbind", replicate(n, bsc_macro[2,], simplify = FALSE))
 rcburn <- do.call("rbind", replicate(n, bsc_macro[5,], simplify = FALSE))
+
+n <- 26 # to account for macro nas
 rccont <- do.call("rbind", replicate(n, bsc_macro[6,], simplify = FALSE))
 bsc_macro <- data.frame(rbind(pgecont,pgeburn,pgwcont,pgwburn,rccont,rcburn))
 
@@ -173,7 +183,10 @@ macro.2 <- macro.2 %>% filter(Sample.Year == "2018", Treatment != "rx/wild")
 macro.2$ID <- macro.2$ï..Plot
 macro.2 <- macro.2 %>% group_by(Site, Treatment, Quad, ID)%>% summarize_at(vars(cyano:Total),list(mean = mean))
 macro.2 <- macro.2 %>% rename_at(.vars = vars(ends_with("_mean")), .funs = funs(sub("[_]mean$", "", .)))
-macro.2[is.na(macro.2)] <- 0
+macro.2 <- macro.2[-8]
+# remove NAs 
+macro.2 <- na.omit(macro.2)
+
 
 bsc_macro <- data.frame(bsc_macro, macro.2) #make sure treatments and sites match!
 bsc_macro <- bsc_macro%>% rename_at(.vars = vars(ends_with("_mean")), .funs = funs(sub("[_]mean$", "", .)))
@@ -297,13 +310,15 @@ bsc_bulk <- data.frame(bulk_short, bsc.pg)
 
 ```{r Random Forest for macro_plant}
 #relative influence of plants on the total macro bsc cover 
-rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(1,2,9,18:61)])
+
+set.seed(123)
+rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(1,2,8,17:60)])
 print(rf)
 varImpPlot(rf,type=1)
 importanceOrder=order(-rf$importance)
 names=rownames(rf$importance)[importanceOrder]
 
-rf_pred <- predict(rf, macro_plant[c(1,2,9,18:61)]) # predictions
+rf_pred <- predict(rf, macro_plant[c(1,2,8,17:60)]) # predictions
 caret::postResample(rf_pred, macro_plant$Total)
 
 df <- data.frame(rf$importance)
@@ -316,13 +331,14 @@ dev.off()
 
 # REMOVE TREATMENT or SITE
 
-rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(9,18:61)])
+set.seed(123)
+rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(8,17:60)])
 print(rf) 
 varImpPlot(rf,type=1)
 importanceOrder=order(-rf$importance)
 names=rownames(rf$importance)[importanceOrder]
 
-rf_pred <- predict(rf, macro_plant[c(9,18:61)]) # predictions
+rf_pred <- predict(rf, macro_plant[c(8,17:60)]) # predictions
 caret::postResample(rf_pred, macro_plant$Total)
 
 df <- data.frame(rf$importance)
@@ -335,12 +351,12 @@ dev.off()
 ```
 
 ```{r rf for plant functional groups}
-
-rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(1,2,9,14:17)])
+set.seed(123)
+rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(1,2,8,13:16)])
 print(rf)   
 varImpPlot(rf,type=1)
 
-rf_pred <- predict(rf, macro_plant[c(1,2,9,14:17)]) # predictions
+rf_pred <- predict(rf, macro_plant[c(1,2,8,13:16)]) # predictions
 caret::postResample(rf_pred, macro_plant$Total)
 
 df <- data.frame(rf$importance)
@@ -352,14 +368,14 @@ ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = nam
 dev.off()
 
 #REMOVE TREATMENT AND SITE
-
-rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(9,14:17)])
+set.seed(123)
+rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_plant[c(8,13:16)])
 
 print(rf)   
 VI_F = importance(rf)
 varImpPlot(rf,type=1)
 
-rf_pred <- predict(rf, macro_plant[c(9,14:17)]) # predictions
+rf_pred <- predict(rf, macro_plant[c(8,13:16)]) # predictions
 caret::postResample(rf_pred, macro_plant$Total)
 
 df <- data.frame(rf$importance)
@@ -376,12 +392,12 @@ dev.off()
 ```{r rf for influence of BSC microbes on BSC cover }
 
 #relative influence of bsc microbes on the total macro bsc cover 
-
-rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = bsc_macro[c(1:202, 211)])
+set.seed(123)
+rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = bsc_macro[c(1:202, 210)])
 print(rf)
 varImpPlot(rf,type=1)
 
-rf_pred <- predict(rf,bsc_macro[c(1:202, 211)]) # predictions
+rf_pred <- predict(rf,bsc_macro[c(1:202, 210)]) # predictions
 caret::postResample(rf_pred, bsc_macro$Total)
 
 df <- data.frame(rf$importance)
@@ -396,13 +412,13 @@ dev.off()
 
 
 ```{r rf for influence of bulk microbes on BSC cover }
-
+set.seed(123)
 #relative influence of bulk microbes on the total macro bsc cover 
-rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_bulk[c(1,2,9,12:211)])
+rf <- randomForest(Total ~ ., ntree = 1000, importance = TRUE, data = macro_bulk[c(1,2,8,11:210)])
 print(rf)
 varImpPlot(rf,type=1)
 
-rf_pred <- predict(rf,macro_bulk[c(1,2,9,12:211)]) # predictions
+rf_pred <- predict(rf,macro_bulk[c(1,2,8,11:210)]) # predictions
 caret::postResample(rf_pred, macro_bulk$Total)
 
 df <- data.frame(rf$importance)
@@ -521,27 +537,31 @@ dev.off()
 
 
 ```{r random forest to determine burned/control from datasets}
-library(caTools)
-library(pROC)
 
-macro$treatment <- c("none","none","none", "none", "none", "none", "none", "none", "none", "none","none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none","none","none", "none", "none", "none", "none", "none", "none", "none","none", "none", "none", "none", "none", "none", "none", "none", "none" ,"burn","burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","none","none","none", "none", "none", "none", "none", "none", "none", "none","none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none","none","none", "none", "none", "none", "none", "none", "none", "none","none", "none", "none", "none", "none", "none", "none", "none", "none" ,"burn","burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","none","none","none", "none", "none", "none", "none", "none", "none", "none","none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none","none","none", "none", "none", "none", "none", "none", "none", "none","none", "none", "none", "none", "none", "none", "none", "none", "none" ,"burn","burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn","burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn", "burn")
-
-macro$treatment <- as.factor(macro$treatment) # 2 is control and 2 is burn 
+macro$Treatment <- as.factor(macro$Treatment) # 2 is control and 2 is burn 
 
 smp_size <- floor(0.75 * nrow(macro))
-set.seed(123)
+set.seed(500)
 train_ind <- sample(seq_len(nrow(macro)), size = smp_size)
 train <- macro[train_ind,]
 test <- macro[-train_ind,]
 
-rf <- randomForest(treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(5,6,7,9,10)])
+rf <- randomForest(Treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(2,5:8)])
 print(rf)
 varImpPlot(rf)
-predicion_for_table <- predict(rf, test[,-10])
-table(observed = test[,10], predicted = predicion_for_table)
-rf.roc <- roc(train$treatment, rf$votes[,2])
+predicion_for_table <- predict(rf, test[,-9])
+table(observed = test[,8], predicted = predicion_for_table)
+rf.roc <- roc(train$Treatment, rf$votes[,2])
 plot(rf.roc)
 auc(rf.roc)
+
+df <- data.frame(rf$importance)
+df$vars <- row.names(df)
+
+pdf("figures/bsc macro on treatment.pdf")
+df %>% mutate(name = fct_reorder(vars, MeanDecreaseAccuracy)) %>% 
+ggplot(aes(x = name, y = MeanDecreaseAccuracy)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+dev.off()
 
 
 
@@ -567,6 +587,14 @@ rf.roc <- roc(train$treatment, rf$votes[,2])
 plot(rf.roc)
 auc(rf.roc)
 
+df <- data.frame(rf$importance)
+df$vars <- row.names(df)
+
+pdf("figures/bsc microbes on treatment.pdf")
+df %>% mutate(name = fct_reorder(vars, MeanDecreaseAccuracy)) %>% top_n(50) %>% 
+ggplot(aes(x = name, y = MeanDecreaseAccuracy)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+dev.off()
+
 
 ```
 
@@ -590,7 +618,13 @@ rf.roc <- roc(train$treatment, rf$votes[,2])
 plot(rf.roc)
 auc(rf.roc)
 
+df <- data.frame(rf$importance)
+df$vars <- row.names(df)
 
+pdf("figures/bulk microbes on treatment.pdf")
+df %>% mutate(name = fct_reorder(vars, MeanDecreaseAccuracy)) %>% top_n(50) %>% 
+ggplot(aes(x = name, y = MeanDecreaseAccuracy)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+dev.off()
 ```
 
 ```{r rf plant and treatment }
@@ -614,5 +648,56 @@ rf.roc <- roc(train$Treatment, rf$votes[,2])
 plot(rf.roc)
 auc(rf.roc)
 
+df <- data.frame(rf$importance)
+df$vars <- row.names(df)
+
+pdf("figures/plants on treatment.pdf")
+df %>% mutate(name = fct_reorder(vars, MeanDecreaseAccuracy)) %>% top_n(50) %>% 
+ggplot(aes(x = name, y = MeanDecreaseAccuracy)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+dev.off()
 
 ```
+
+
+look at relationship between plant cover and biocrust cover
+```{r}
+library(lme4)
+library(car)
+library(ggpubr)
+macro_plant <- macro_plant %>% mutate(total_plant = rowSums(.[17:60]))
+plant_bsc_mod <- lmer(log(Total+1) ~ log(total_plant+1) + (1|ID), data = macro_plant)
+Anova(plant_bsc_mod)
+macro_plant$Total_log <- log(macro_plant$Total +1)
+
+ggplot(macro_plant, aes(x = Total_log, y = total_plant, color = Treatment)) + geom_point() + geom_smooth(method = "glm") + facet_grid(.~Treatment)+ stat_cor()
+
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(total_plant+1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "lm") + stat_cor() + theme_bw()
+
+
+nng_bsc_mod <- lmer(log(Total+1) ~ log(nng.cov+1) + (1|ID), data = macro_plant)
+Anova(nng_bsc_mod)
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(nng.cov +1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "glm") + stat_cor() + theme_bw()
+
+nnf_bsc_mod <- lmer(log(Total+1) ~ log(nnf.cov+1) + (1|ID), data = macro_plant)
+Anova(nnf_bsc_mod)
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(nnf.cov +1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "glm") + stat_cor() + theme_bw()
+
+ng_bsc_mod <- lmer(log(Total+1) ~ log(ng.cov+1) + (1|ID), data = macro_plant)
+Anova(ng_bsc_mod)
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(ng.cov +1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "glm") + stat_cor() + theme_bw()
+
+nf_bsc_mod <- lmer(log(Total+1) ~ log(nf.cov+1) + (1|ID), data = macro_plant)
+Anova(nf_bsc_mod)
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(nf.cov +1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "glm") + stat_cor() + theme_bw()
+
+PTEDRY_bsc_mod <- lmer(log(Total+1) ~ log(PTEDRY+1) + (1|ID), data = macro_plant)
+Anova(PTEDRY_bsc_mod)
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(PTEDRY+1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "glm") + stat_cor() + theme_bw()+ facet_wrap(.~Treatment)
+
+EROBOT_bsc_mod <- lmer(log(Total+1) ~ log(EROBOT+1) + (1|ID), data = macro_plant)
+Anova(EROBOT_bsc_mod)
+ggplot(macro_plant, aes(x = log(Total + 1), y = log(EROBOT+1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "glm") + stat_cor() + theme_bw()
+
+```
+
+
