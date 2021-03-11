@@ -37,7 +37,7 @@ str(data)
 ```
 
 
-```{r total biocrust model}
+```{r cover}
 
 data$cover.plus.1 <- data$Cover+1
 data$Cover.log <- log10(data$cover.plus.1)
@@ -59,8 +59,54 @@ summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
 summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
 ```
 
+```{r native grass cover}
 
-```{r total biocrust model}
+bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "ng"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+
+```{r native forb cover}
+
+bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nf"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+```{r nonnative grass cover}
+
+bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nng"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+
+```{r nonnative forb cover}
+
+bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nnf"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+
+```{r density}
 data$Density <- as.numeric(data$Density)
 data$density.plus.1 <- data$Density+1
 data$density.log <- log10(data$density.plus.1)
@@ -80,6 +126,52 @@ boxplot(density.log ~ Treatment, data = data)
 summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Year = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
+```
+
+```{r native grass density}
+
+bestmod.log <- lmer(density.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "ng"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+```{r native forb density}
+
+bestmod.log <- lmer(density.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nf"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+```{r nonnative grass density}
+
+bestmod.log <- lmer(density.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nng"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
+```
+
+```{r nonnative forb density}
+
+bestmod.log <- lmer(density.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nnf"), REML=FALSE)
+summary(bestmod.log)
+Anova(bestmod.log)
+
+summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+
 ```
 
 ```{r}
@@ -128,6 +220,61 @@ ggplot(df2, aes(x=Year, y=Density, group=Treatment, fill=Treatment)) +
   scale_x_continuous(breaks = 1:2,
     labels = c("2018", "2019")) + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = "none")
+dev.off()
+
+```
+
+```{r}
+
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+
+df2 <- data_summary(data, varname="Cover", 
+                    groupnames=c("Funct.Gp", "Treatment", "Year"))
+head(df2)
+
+# with year as a continuous variable 
+df2$Year <- as.numeric(df2$Year)
+
+pdf("figures/plant functional group cover.pdf")
+ggplot(df2 %>% filter(Funct.Gp != "UNK" & Funct.Gp != "ns" & Funct.Gp != "nns"), aes(x=Year, y=Cover, group=Treatment, color=Treatment)) + 
+  geom_line() + 
+  geom_point()+ 
+  geom_errorbar(aes(ymin=Cover -sd , ymax=Cover+sd), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() + 
+  facet_grid(Funct.Gp ~ Treatment) + 
+  scale_x_continuous(breaks = 1:2,
+    labels = c("2018", "2019")) +
+  theme(legend.position = "none")
+dev.off()
+
+df2 <- data_summary(data, varname="Density", 
+                    groupnames=c("Funct.Gp", "Treatment", "Year"))
+head(df2)
+
+# with year as a continuous variable 
+df2$Year <- as.numeric(df2$Year)
+
+pdf("figures/plant functional group density.pdf")
+ggplot(df2 %>% filter(Funct.Gp != "UNK" & Funct.Gp != "ns" & Funct.Gp != "nns"), aes(x=Year, y=Density, group=Treatment, color=Treatment)) + 
+  geom_line() + 
+  geom_point()+ 
+  geom_errorbar(aes(ymin=Density -sd , ymax=Density+sd), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() + 
+  facet_grid(Funct.Gp ~ Treatment) + 
+  scale_x_continuous(breaks = 1:2,
+    labels = c("2018", "2019")) +
   theme(legend.position = "none")
 dev.off()
 

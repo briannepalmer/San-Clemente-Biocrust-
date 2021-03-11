@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/Brianne/Documents/San-Clemente-Biocrust-/")
 ```
 
 
@@ -27,7 +28,7 @@ library(pairwiseAdonis)
 
 ```{r microbial community}
 
-all.taxa <- read.csv("C:/Users/Brianne/Documents/San-Clemente-Biocrust-/data/taxon_rel_abund_edited_Feb2021.csv")
+all.taxa <- read.csv("data/taxon_rel_abund_edited_Feb2021.csv")
 
 genus <- all.taxa %>%  dplyr::select(genus, X1:X24)
 head(genus)
