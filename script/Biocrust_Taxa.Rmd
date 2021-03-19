@@ -49,6 +49,9 @@ genus.all <- as.data.frame(c(metadata, genus.transposed))
 genus.all <- genus.all %>% rename(Sample = ï..Sample)
 bsc <- genus.all
 
+write.csv(genus.all[,c(1:90)], "output/metadata.csv")
+write.csv(all.taxa[,-32], "output/otu.csv")
+
 ```
 
 ```{r all genera}
@@ -59,6 +62,7 @@ sum_genus <- aggregate(n ~ genus, data=genus.sums.long, sum)
 genera  <- sum_genus$genus [order (sum_genus$n, decreasing = TRUE)]
 
 genera.order <- subset(sum_genus, genus %in% genera[1:200])
+
 
 ggplot(data = genera.order, aes(x = reorder(genus,-n), y = n)) + geom_bar(stat = "identity", fill = "darkorchid4") + theme_bw() + coord_flip() + theme(legend.position = "none", axis.text.x = element_text(hjust = .9), text = element_text(size= 10)) + labs(x = "Abundance", y = "genus", title = "Top 200 genus")
 
@@ -157,6 +161,22 @@ for(genus in genus){
 
 ```{r microbial commmunity nmds}
 
+md <- read.csv("data/sci_bsc_18_19_20_editMarch2021.csv") 
+md <- md %>% filter(Sample.Year == 2018, Treatment != "rx/wild")
+md <- md %>%  mutate_at(vars(Density_mean, Cover_mean,ng.cov_mean:nf.den_mean),as.numeric)
+# md <- md %>% mutate_at(vars(Density_mean, Cover_mean, ng.cov_mean:nf.den_mean),replace_na, '0')
+md <- md %>%  group_by(treatment, Site) %>% summarize_at(vars(Density_mean:nf.den_mean),list(mean = mean))
+
+n <- 4
+pgwburn <- do.call("rbind", replicate(n, md[2,], simplify = FALSE))
+pgwcont <- do.call("rbind", replicate(n, md[5,], simplify = FALSE))
+pgeburn <- do.call("rbind", replicate(n, md[1,], simplify = FALSE))
+pgecont <-do.call("rbind", replicate(n, md[4,], simplify = FALSE))
+rcburn <- do.call("rbind", replicate(n, md[3,], simplify = FALSE))
+rccont <- do.call("rbind", replicate(n, md[6,], simplify = FALSE))
+
+md <- data.frame(rbind(pgwburn, pgwcont, pgeburn, pgecont, rcburn, rccont))
+
 genus.only <- genus.all[-c(1:90)]
 
 genus.nmds <- metaMDS(genus.only, trace = FALSE, trymax=100, "bray")
@@ -168,13 +188,22 @@ genus.nmds$stress
 MDS1 = genus.nmds$points[,1] # adds the points of the NMDS 1 dimmension
 MDS2 = genus.nmds$points[,2] # adds the points of the NMDS 2 dimmension
 
-metadata$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+md$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+md$id <-c("bsc1", "bsc2", "bsc3", "bsc4", "bsc5", "bsc6", "bsc7", "bsc8", "bsc9", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24")
+md$Type <- c("pgw_burn","pgw_burn","pgw_burn","pgw_burn","pgw_control","pgw_control","pgw_control","pgw_control", "pge_burn","pge_burn","pge_burn","pge_burn","pge_control","pge_control","pge_control","pge_control","rc_burn", "rc_burn", "rc_burn", "rc_burn", "rc_control", "rc_control", "rc_control", "rc_control")
 
-NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$treatment, site = metadata$site, FireType = metadata$FireType) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = md$treatment, site = md$Site, FireType = md$FireType, id = md$id, type = md$Type) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
 
 # make the NMDS plot
 ggplot(NMDS, aes(x = MDS1, y = MDS2, col = site)) + geom_point() + 
   stat_ellipse() + theme_bw()
+
+ggplot(NMDS, aes(x = MDS1, y = MDS2, color = id)) + geom_point() + 
+  stat_ellipse(aes(fill = FireType)) + theme_bw()
+
+ggplot(NMDS %>% filter(site == "pgw"), aes(x = MDS1, y = MDS2, color = FireType)) + geom_point() + 
+  stat_ellipse() + theme_bw()
+
 
 # determine if the differene is significant by doing a PERMANOVA
 adonis(genus.only ~ FireType, metadata) 
@@ -183,7 +212,7 @@ pairwise.adonis(genus.only,factors=metadata$FireType)
 pairwise.adonis(genus.only,factors=metadata$treatment)
 pairwise.adonis(genus.only,factors=metadata$site)
 
-env <- metadata[c(7:90)]
+env <- md[c(3:90)]
 
 env.fit <- envfit(genus.nmds,env , permutations = 999, na.rm = TRUE)
 
@@ -195,11 +224,11 @@ Make stacked bar plots and heat maps
 
 ```{r}
 
-all.taxa[c(7:30)] <- sapply(all.taxa[c(7:30)],as.numeric)
-all.taxa$Sum <-rowSums(all.taxa[c(7:30)]) 
+all.taxa[c(8:31)] <- sapply(all.taxa[c(8:31)],as.numeric)
+all.taxa$Sum <-rowSums(all.taxa[c(8:31)]) 
 one_percent <- all.taxa %>% filter(Sum < 0.01)
-one_percent_summed <- colSums(one_percent[c(7:30)])
-one_percent <- one_percent %>%  dplyr::select(genus, bsc1:bsc24)
+one_percent_summed <- colSums(one_percent[c(8:31)])
+one_percent <- one_percent %>%  dplyr::select(genus, X1:X24)
 head(one_percent)
 one_percent <- aggregate(. ~ genus, transform(one_percent, genus = genus), sum)
 rownames(one_percent) <- one_percent$genus
@@ -220,7 +249,7 @@ one_percent_vector <- c("One Percent", "One Percent", "One Percent", "One Percen
 
 all.taxa.df <- rbind(all.taxa.df, one_percent_vector)
 
-phylum <- all.taxa.df %>%  dplyr::select(phylum, bsc1:bsc24)
+phylum <- all.taxa.df %>%  dplyr::select(phylum, X1:X24)
 head(phylum)
 phylum[c(2:25)] <- sapply(phylum[c(2:25)],as.numeric)
 phylum <- aggregate(. ~ phylum, transform(phylum, phylum = phylum), sum)
@@ -247,7 +276,7 @@ ggplot(phylum.ggplot, aes(fill = phylum, y = count, x = treatment)) + geom_bar(p
 
 ```{r}
 
-cyanobacteria <- all.taxa.df %>%  filter(phylum == "Cyanobacteria") %>% dplyr::select(genus, bsc1:bsc24)
+cyanobacteria <- all.taxa.df %>%  filter(phylum == "Cyanobacteria") %>% dplyr::select(genus, X1:X24)
 cyanobacteria[c(2:25)] <- sapply(cyanobacteria[c(2:25)],as.numeric)
 cyanobacteria <- aggregate(. ~ genus, transform(cyanobacteria, genus = genus), sum)
 rownames(cyanobacteria) <- cyanobacteria$genus
@@ -257,12 +286,15 @@ rownames(cyanobacteria.transposed) <- colnames(cyanobacteria)
 colnames(cyanobacteria.transposed) <- rownames(cyanobacteria)
 
 cyanobacteria.all <- as.data.frame(c(metadata, cyanobacteria.transposed))
+cyanobacteria.all$Sample <- c("bsc01", "bsc02", "bsc03", "bsc04", "bsc05", "bsc06", "bsc07", "bsc08", "bsc09", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24")
 cyanobacteria.all[c(91:106)] <- sapply(cyanobacteria.all[c(91:106)],as.numeric)
 cyanobacteria.ggplot <- pivot_longer(cyanobacteria.all, cols = Acaryochloris:Trichodesmium, names_to = "genus", values_to = "count")
-cyanobacteria.ggplot$Sample <- cyanobacteria.ggplot$ï..Sample
 
 
-ggplot(cyanobacteria.ggplot, aes(fill = genus, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw()
+
+ggplot(cyanobacteria.ggplot, aes(fill = genus, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ cyanobacteria.ggplot$ï..Sample) + theme_bw()
+
+ggplot(cyanobacteria.ggplot, aes(fill = genus, y = count, x = Sample)) + geom_bar(position = "fill", stat = "identity") + theme_bw()
 
 ```
 
