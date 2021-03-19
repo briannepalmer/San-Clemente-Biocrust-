@@ -27,9 +27,10 @@ library(pairwiseAdonis)
 
 ```{r plant cover community}
 plants <- read.csv("data/all_plants_March2021edit.csv")
-plants <- plants %>% filter(Year == 2018 | Year == 2019, T_Year == 2017) 
+plants <- plants %>% filter(Year == 2018 | Year == 2019) 
 plants$Cover <- as.numeric(plants$Cover)
-ng.cov <- plants %>% filter(Funct.Gp == "ng") %>% mutate(ng.cov = mean(Cover))
+plants$Cover[is.na(plants$Cover)] <-0
+ng.cov <- plants %>% filter(Funct.Gp == "ng") %>% mutate(ng.cov = (Cover))
 plants <- merge(plants, ng.cov, all = TRUE)
 nng.cov <- plants %>% filter(Funct.Gp == "nng") %>% mutate(nng.cov = mean(Cover))
 plants <- merge(plants, nng.cov, all = TRUE)
@@ -39,6 +40,7 @@ nf.cov <- plants %>% filter(Funct.Gp == "nf") %>% mutate(nf.cov = mean(Cover))
 plants <- merge(plants, nf.cov, all = TRUE)
 plants[is.na(plants)] <- 0
 plants$Cover <- as.numeric(plants$Cover)
+plants$Density <- as.numeric(plants$Density)
 plants <- plants %>% 
   pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = sum))
 plants <- plants %>% mutate_at(c(103:185), as.numeric)
@@ -49,6 +51,8 @@ plants <- plants %>% mutate_at(c(103:185), as.numeric)
 
 
 ```
+
+
 This code will run a for loop to determine which genera varied with treatment. I haven't figure out how to do this in R yet but to figure out if there were any genera that differed, I called the list of genera with rownames(genera) then copired and pasted that and the p values from this fore loop into an excel sheet. Not very graceful, but it works..
 ```{r}
 plants.only <- plants[c(103:185)]
@@ -111,7 +115,7 @@ ggplot(data = plants.d, aes(x = Treatment, y = MAFOFO, fill = Treatment)) + geom
 ```{r commmunity nmds}
 plants.short <- read.csv("data/all_plants_March2021edit.csv")
 plants.short <- plants.short %>% filter(T_Year == "2017", Year == 2019 | Year ==2018)
-plants.short <- plants.short %>% rename(ID = ï..Ref)
+plants.short <- plants.short %>% dplyr::rename(ID = ï..Ref)
 plants.short <- plants.short %>% 
   pivot_wider(names_from = Code, values_from = Cover, values_fn = list(Cover = sum))
 plants.short[is.na(plants.short)] <- 0
@@ -164,11 +168,17 @@ env.fit$vectors
 arrow <- data.frame(env.fit$vectors$arrows, R = env.fit$vectors$r, P = env.fit$vectors$pvals)
 arrow$FG <-  rownames(arrow)
 arrow.p <- filter(arrow, P<=0.05)
-
+library(ggrepel)
 pdf("figures/plant with env vectors.pdf")
-ggplot(data=NMDS, aes(x = MDS1, y = MDS2)) +
-  geom_point(data=NMDS, aes(MDS1, MDS2, shape =year),position=position_jitter(.1)) + stat_ellipse(aes(fill=treatment), alpha=.2,type='t',size =1, geom="polygon")+ 
-  theme_minimal()+ geom_segment(data=arrow.p, aes(x=0, y=0, xend=NMDS1, yend=NMDS2, color=FG), arrow=arrow(length=unit(.2, "cm")*arrow.p$R))
+ggplot(data=NMDS, aes(x = MDS1, y = MDS2)) + geom_point(data=NMDS, aes(MDS1, MDS2, shape =year),position=position_jitter(.1)) + stat_ellipse(aes(fill=treatment), alpha=.2,type='t',size =1, geom="polygon")+ theme_minimal()+ geom_segment(data=arrow.p, aes(x=0, y=0, xend=NMDS1, yend=NMDS2, color=FG), arrow=arrow(length=unit(.2, "cm")*arrow.p$R)) + geom_label_repel(data=arrow.p, aes(x=NMDS1, y=NMDS2,  label = FG),  label.padding = 0.1, label.size = 0.1, size =3, max.overlaps = 15) + theme(legend.position = "none")
+dev.off()
+
+
+## do it again but remove the year specific values 
+
+arrow.p.2 <- arrow.p[-c(7,8,14:17, 19,20, 25:28),]
+pdf("figures/plant nmds 2.pdf")
+ggplot(data=NMDS, aes(x = MDS1, y = MDS2)) + geom_point(data=NMDS, aes(MDS1, MDS2, shape =year),position=position_jitter(.1)) + stat_ellipse(aes(fill=treatment), alpha=.2,type='t',size =1, geom="polygon")+ theme_minimal()+ geom_segment(data=arrow.p.2, aes(x=0, y=0, xend=NMDS1, yend=NMDS2, color=FG), arrow=arrow(length=unit(.2, "cm")*arrow.p$R)) + geom_label_repel(data=arrow.p.2, aes(x=NMDS1, y=NMDS2,  label = FG),  label.padding = 0.1, label.size = 0.1, size =3, max.overlaps = 15) + theme(legend.position = "none")
 dev.off()
 
 ```

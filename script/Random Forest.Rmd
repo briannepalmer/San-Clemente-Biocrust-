@@ -190,8 +190,7 @@ macro.2 <- na.omit(macro.2)
 
 bsc_macro <- data.frame(bsc_macro, macro.2) #make sure treatments and sites match!
 bsc_macro <- bsc_macro%>% rename_at(.vars = vars(ends_with("_mean")), .funs = funs(sub("[_]mean$", "", .)))
-bsc_macro <- bsc_macro %>% rename(uclassified_Verruvomicrobia = unclassified..derived.from.Verrucomicrobia.subdivision.3.)
-bsc_macro <- bsc_macro %>% rename(uclassified_Gammaproteobacteria = unclassified..derived.from.Gammaproteobacteria.)
+
 
 ```
 
@@ -246,6 +245,8 @@ pgeburn <- data.frame(rbind(plants_short[1,],plants_short[1,],plants_short[1,],p
 pgecont <- data.frame(rbind(plants_short[2,],plants_short[2,],plants_short[2,],plants_short[2,]))
 
 plants_short <- data.frame(rbind(pgwburn, pgwcont, pgeburn, pgecont))
+
+write.csv(plants_short, "output/plants_short.csv")
 
 bsc_plant <- data.frame(plants_short, bsc.pg)
 
