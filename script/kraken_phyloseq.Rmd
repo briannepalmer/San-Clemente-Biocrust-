@@ -1,0 +1,29 @@
+---
+title: "Kraken Analysis"
+author: "Brianne"
+date: "3/18/2021"
+output: html_document
+---
+
+install libraries
+```{r}
+library(tidyverse)
+# pavian::runApp(port=5000)
+library("phyloseq")
+library("biomformat")
+```
+
+```{r make OTU for all samples }
+otu_S1 <- read_biom("C:/Users/Brianne/Downloads/sample1.biom") 
+otumat_S1 = as(biom_data(otu_S1), "matrix") 
+OTU_S1 <- otu_table(otumat_S1, taxa_are_rows=TRUE)
+str(OTU_S1)
+
+taxmat_S1 = as.matrix(observation_metadata(otu_S1), rownames.force = TRUE)
+TAX_S1 = tax_table(taxmat_S1)
+
+physeq_S1 = phyloseq(OTU_S1, TAX_S1)
+str(physeq_S1)
+```
+
+
