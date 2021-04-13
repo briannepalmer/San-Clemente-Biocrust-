@@ -41,7 +41,7 @@ str(data)
 
 data$cover.plus.1 <- data$Cover+1
 data$Cover.log <- log10(data$cover.plus.1)
-bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data, REML=FALSE)
+bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + Funct.Gp + (1|Plot), data = data, REML=FALSE)
 summary(bestmod.log)
 Anova(bestmod.log)
 residplot(bestmod.log)
@@ -57,6 +57,8 @@ boxplot(Cover.log ~ Treatment, data = data)
 summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
 summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+summary(glht(bestmod.log, linfct = mcp(Funct.Gp= "Tukey"))) 
+
 ```
 
 ```{r native grass cover}
@@ -73,13 +75,15 @@ summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
 
 ```{r native forb cover}
 
-bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nf"), REML=FALSE)
+bestmod.log <- lmer(Cover ~ Treatment + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nf", Year == "2019"), REML=FALSE)
 summary(bestmod.log)
 Anova(bestmod.log)
 
 summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Year = "Tukey"))) # <2e-16
-summary(glht(bestmod.log, linfct = mcp(Site= "Tukey"))) 
+summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
+
+plot(log(Cover) ~ Treatment, data = data %>% filter(Funct.Gp == "nf", Year == "2019"))
 
 ```
 ```{r nonnative grass cover}
@@ -96,7 +100,7 @@ summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
 
 ```{r nonnative forb cover}
 
-bestmod.log <- lmer(Cover.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nnf"), REML=FALSE)
+bestmod.log <- lmer(Cover ~ Treatment + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nnf", Year == "2019"), REML=FALSE)
 summary(bestmod.log)
 Anova(bestmod.log)
 
@@ -141,7 +145,7 @@ summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
 ```
 ```{r native forb density}
 
-bestmod.log <- lmer(density.log ~ Treatment + Year + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nf"), REML=FALSE)
+bestmod.log <- lmer(density.log ~ Treatment + Site + (1|Plot), data = data %>% filter(Funct.Gp == "nf"), REML=FALSE)
 summary(bestmod.log)
 Anova(bestmod.log)
 
@@ -176,35 +180,80 @@ summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
 
 ```{r}
 
-data_summary <- function(data, varname, groupnames){
-  require(plyr)
-  summary_func <- function(x, col){
-    c(mean = mean(x[[col]], na.rm=TRUE),
-      sd = sd(x[[col]], na.rm=TRUE))
-  }
-  data_sum<-ddply(data, groupnames, .fun=summary_func,
-                  varname)
-  data_sum <- rename(data_sum, c("mean" = varname))
- return(data_sum)
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=TRUE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+
+    return(datac)
 }
 
-df2 <- data_summary(data, varname="Cover", 
-                    groupnames=c("Treatment", "Year"))
+df2 <- summarySE(data, measurevar = "Cover", groupvars=c("Treatment", "Year"))
 head(df2)
 
 df2$Year <- as.numeric(df2$Year)
 
 pdf("figures/plantcover.pdf")
-ggplot(df2, aes(x=Year, y=Cover, group=Treatment, fill=Treatment)) + 
+ggplot(data = df2, aes(x = Treatment, y = Cover, fill = Treatment)) +
   geom_bar(sta = "identity") + 
   geom_errorbar(aes(ymin=(Cover), ymax=(Cover+sd)), width=.2,
-                 position=position_dodge(0.05)) + theme_bw() + 
-  facet_grid(. ~ Treatment) + 
-  scale_x_continuous(breaks = 1:2,
-    labels = c("2018", "2019")) + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
-  theme(legend.position = "none")
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Year)) + ggtitle("All Plant Cover")
+
 dev.off()
+
+
+df2 <- summarySE(data %>% filter(Funct.Gp == "ng"), measurevar = "Cover", groupvars=c("Treatment", "Year"))
+ggplot(data = df2, aes(x = Treatment, y = Cover, fill = Treatment)) +
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=(Cover-se), ymax=(Cover+se)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Year))+ ggtitle("Native Grass Cover")
+
+df2 <- summarySE(data %>% filter(Funct.Gp == "nng"), measurevar = "Cover", groupvars=c("Treatment", "Year"))
+ggplot(data = df2, aes(x = Treatment, y = Cover, fill = Treatment)) +
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=(Cover-se), ymax=(Cover+se)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Year))+ ggtitle("NonNative Grass Cover")
+
+df2 <- summarySE(data %>% filter(Funct.Gp == "nnf"), measurevar = "Cover", groupvars=c("Treatment", "Year"))
+ggplot(data = df2, aes(x = Treatment, y = Cover, fill = Treatment)) +
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=(Cover-se), ymax=(Cover+se)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Year))+ ggtitle("NonNative Forb Cover")
+
+df2 <- summarySE(data %>% filter(Funct.Gp == "nf"), measurevar="Cover", groupvars=c("Treatment", "Year"))
+ggplot(data = df2, aes(x = Treatment, y = Cover, fill = Treatment)) +
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=(Cover-se), ymax=(Cover+se)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Year))+ ggtitle("Native Forb Cover")
+
 
 
 df2 <- data_summary(data, varname="Density", 
@@ -262,6 +311,18 @@ dev.off()
 df2 <- data_summary(data, varname="Density", 
                     groupnames=c("Funct.Gp", "Treatment", "Year"))
 head(df2)
+
+df2$Year <- as.numeric(df2$Year)
+ggplot(df2 %>% filter(Funct.Gp == "ng"), aes(x=Year, y=Cover, group=Treatment, color=Treatment)) + 
+  geom_line() + 
+  geom_point()+ 
+  geom_errorbar(aes(ymin=Cover -sd , ymax=Cover+sd), width=.2,
+                 position=position_dodge(0.05)) + theme_bw() +
+  scale_x_continuous(breaks = 1:2,
+    labels = c("2018", "2019")) +
+  facet_grid(.~Year) +
+  theme(legend.position = "none")
+
 
 # with year as a continuous variable 
 df2$Year <- as.numeric(df2$Year)
