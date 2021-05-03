@@ -1,0 +1,601 @@
+---
+title: "RF_April2021"
+author: "Brianne"
+date: "4/22/2021"
+output: html_document
+---
+
+Load libraries 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/Brianne/Documents/San-Clemente-Biocrust-/")
+```
+
+```{r load libraries}
+library(tidyverse)
+library(randomForest)
+library(dismo)
+library(gbm)
+library(viridis)
+library(pROC)
+library(caret)
+library(beepr)
+```
+
+I uploaded the dataframes for bulk, bsc, and plants which were created in the "Make Df" script. All dataframes were stored in the output. 
+
+## Load Data 
+
+```{r}
+bsc_bulk <- read.csv("output/bsc_bulk.csv") # compare bsc to bulk soil 
+bsc_macro <- read.csv("output/bsc_macro.csv") # compare bsc to bsc cover 
+bsc_plant <- read.csv("output/bsc_plant.csv") # compare bsc to plant cover 
+
+macro_bulk <- read.csv("output/macro_bulk.csv") # compare bsc cover to bulk microbes 
+macro_bsc <- read.csv("output/macro_bsc.csv") # compare bsc cover to bsc microbes 
+macro_plant <- read.csv("output/macro_plant.csv") # compare bsc cover to plant cover 
+
+plant_bulk <- read.csv("output/plant_bulk.csv") # compare plant cover to bulk microbes 
+plant_bsc <- read.csv("output/plant_bsc.csv") # compare plant cover to bsc microbes
+```
+
+## macro_plant 
+
+Start with macro_plant
+
+Define the control 
+```{r}
+trControl <- trainControl(method = "cv",
+    number = 10,
+    search = "grid")
+```
+
+Step 1: Train the model 
+From this website: https://www.guru99.com/r-random-forest-tutorial.html
+```{r}
+train_macro_plant <- sample(1:nrow(macro_plant),1000,replace=TRUE)
+train <- macro_plant[train_macro_plant,]
+train <- train[,-1]
+test <- macro_plant[-train_macro_plant,] 
+test <- test[,-1]
+```
+
+```{r}
+set.seed(1234)
+# Run the model
+# Total is the total biocrust cover 
+rf_default <- train(Total~.,
+    data = train[c(1,2,8,17:60)],
+    method = "rf",
+    trControl = trControl) #only include plant data 
+# Print the results
+print(rf_default); beep(0)
+```
+
+Step 2: search best mtry
+
+```{r}
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1:25))
+rf_mtry <- train(Total~.,
+    data = train[c(1,2,8,17:60)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 300)
+print(rf_mtry); beep(0)
+
+```
+
+```{r}
+best_mtry <- rf_mtry$bestTune$mtry
+best_rmse <- max(rf_mtry$results$RMSE)
+best_r2 <- max(rf_mtry$results$Rsquared)
+```
+
+Step 3: Search the best maxnodes 
+
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(5: 15)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1,2,8,17:60)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    current_iteration <- toString(maxnodes)
+    store_maxnode[[current_iteration]] <- rf_maxnode
+}
+results_mtry <- resamples(store_maxnode)
+summary(results_mtry); beep(0)
+```
+
+Look at higher nodes to get a better score 
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(60: 70)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1,2,8,17:60)],
+        method = "rf",,
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    key <- toString(maxnodes)
+    store_maxnode[[key]] <- rf_maxnode
+}
+results_node <- resamples(store_maxnode)
+summary(results_node); beep(0)
+```
+
+Step 4: Search Best ntrees
+
+```{r}
+store_maxtrees <- list()
+for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
+    set.seed(5678)
+    rf_maxtrees <- train(Total~.,
+        data = train[c(1,2,8,17:60)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = 69,
+        ntree = ntree)
+    key <- toString(ntree)
+    store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree); beep(0)
+```
+
+what are the best parameters?
+ ntree = 450 (based on low RMSE and high Rsquared)
+ mtry = 24
+ maxnodes = 69
+ 
+```{r}
+fit_rf <- train(Total~.,
+    train[c(1,2,8,17:60)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 450,
+    maxnodes = 69); beep(0)
+```
+
+Step 5: Evaluate the Model 
+```{r}
+rf_pred <- predict(fit_rf, test) # predictions
+caret::postResample(rf_pred, test$Total)
+```
+
+Step 6: Visualize Result 
+```{r}
+varImp(fit_rf)
+```
+## macro_plant -- functional group only 
+
+Step 1: Train the model 
+From this website: https://www.guru99.com/r-random-forest-tutorial.html
+```{r}
+train_macro_plant <- sample(1:nrow(macro_plant),1000,replace=TRUE)
+train <- macro_plant[train_macro_plant,]
+train <- train[,-1]
+test <- macro_plant[-train_macro_plant,] 
+test <- test[,-1]
+```
+
+```{r}
+set.seed(1234)
+# Run the model
+# Total is the total biocrust cover 
+rf_default <- train(Total~.,
+    data = train[c(1,2,8,13:16)],
+    method = "rf",
+    trControl = trControl) #only include plant data 
+# Print the results
+print(rf_default); beep(0)
+```
+
+Step 2: search best mtry
+
+```{r}
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1:5))
+rf_mtry <- train(Total~.,
+    data = train[c(1,2,8,13:16)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 300)
+print(rf_mtry); beep(0)
+
+```
+
+```{r}
+best_mtry <- rf_mtry$bestTune$mtry
+best_rmse <- max(rf_mtry$results$RMSE)
+best_r2 <- max(rf_mtry$results$Rsquared)
+```
+
+Step 3: Search the best maxnodes 
+
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(5: 15)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1,2,8,13:16)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    current_iteration <- toString(maxnodes)
+    store_maxnode[[current_iteration]] <- rf_maxnode
+}
+results_mtry <- resamples(store_maxnode)
+summary(results_mtry); beep(0)
+```
+
+Look at higher nodes to get a better score 
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(40: 50)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1,2,8,13:16)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    key <- toString(maxnodes)
+    store_maxnode[[key]] <- rf_maxnode
+}
+results_node <- resamples(store_maxnode)
+summary(results_node); beep(0)
+```
+
+Step 4: Search Best ntrees
+
+```{r}
+store_maxtrees <- list()
+for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
+    set.seed(5678)
+    rf_maxtrees <- train(Total~.,
+        data = train[c(1,2,8,13:16)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = 69,
+        ntree = ntree)
+    key <- toString(ntree)
+    store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree); beep(0)
+```
+
+what are the best parameters?
+ ntree = 250 (based on low RMSE and high Rsquared)
+ mtry = 5
+ maxnodes = 49
+ 
+```{r}
+fit_rf <- train(Total~.,
+    train[c(1,2,8,13:16)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 250,
+    maxnodes = 49); beep(0)
+```
+
+Step 5: Evaluate the Model 
+```{r}
+rf_pred <- predict(fit_rf, test[c(1,2,8,13:16)]) # predictions
+caret::postResample(rf_pred, test[c(1,2,8,13:16)]$Total)
+```
+
+Step 6: Visualize Result 
+```{r}
+varImp(fit_rf)
+```
+#############################################################################################################################
+
+## bsc_macro 
+
+Step 1: Train the model 
+From this website: https://www.guru99.com/r-random-forest-tutorial.html
+```{r}
+train_bsc_macro <- sample(1:nrow(bsc_macro),1000,replace=TRUE)
+train <- bsc_macro[train_bsc_macro,]
+train <- train[,-1]
+test <- bsc_macro[-train_bsc_macro,] 
+test <- test[,-1]
+```
+
+```{r}
+set.seed(1234)
+# Run the model
+# Total is the total biocrust cover 
+rf_default <- train(Total~.,
+    data = train[c(1:202, 210)],
+    method = "rf",
+    trControl = trControl)
+# Print the results
+print(rf_default); beep(0)
+```
+
+Step 2: search best mtry
+
+```{r}
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1:102))
+rf_mtry <- train(Total~.,
+    data = train[c(1:202, 210)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 300)
+print(rf_mtry); beep(0)
+
+```
+
+```{r}
+best_mtry <- rf_mtry$bestTune$mtry
+best_rmse <- max(rf_mtry$results$RMSE)
+best_r2 <- max(rf_mtry$results$Rsquared)
+```
+
+Step 3: Search the best maxnodes 
+
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(5: 15)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1:202, 210)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    current_iteration <- toString(maxnodes)
+    store_maxnode[[current_iteration]] <- rf_maxnode
+}
+results_mtry <- resamples(store_maxnode)
+summary(results_mtry); beep(0)
+```
+
+Look at higher nodes to get a better score 
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(20: 30)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1:202, 210)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    key <- toString(maxnodes)
+    store_maxnode[[key]] <- rf_maxnode
+}
+results_node <- resamples(store_maxnode)
+summary(results_node); beep(0)
+```
+
+Step 4: Search Best ntrees
+
+```{r}
+store_maxtrees <- list()
+for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
+    set.seed(5678)
+    rf_maxtrees <- train(Total~.,
+        data = train[c(1:202, 210)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = 7,
+        ntree = ntree)
+    key <- toString(ntree)
+    store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree); beep(0)
+```
+
+what are the best parameters?
+ ntree = 500 (based on low RMSE and high Rsquared)
+ mtry = 42
+ maxnodes = 7
+ 
+```{r}
+fit_rf <- train(Total~.,
+    train[c(1:202, 210)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 500,
+    maxnodes = 7); beep(0)
+```
+
+Step 5: Evaluate the Model 
+```{r}
+rf_pred <- predict(fit_rf, test[c(1:202, 210)]) # predictions
+caret::postResample(rf_pred, test$Total)
+```
+
+Step 6: Visualize Result 
+```{r}
+varImp(fit_rf)
+```
+
+
+#############################################################################################################################
+
+## bulk_macro
+
+Step 1: Train the model 
+From this website: https://www.guru99.com/r-random-forest-tutorial.html
+```{r}
+train_macro_bulk <- sample(1:nrow(macro_bulk),100,replace=FALSE)
+train <- macro_bulk[train_macro_bulk,]
+train <- train[,-1]
+test <- macro_bulk[-train_macro_bulk,] 
+test <- test[,-1]
+```
+
+```{r}
+set.seed(1234)
+# Run the model
+# Total is the total biocrust cover 
+rf_default <- train(Total~.,
+    data = train[c(1,2,8,11:210)],
+    method = "rf",
+    trControl = trControl)
+# Print the results
+print(rf_default); beep(2)
+```
+
+Step 2: search best mtry
+
+```{r}
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1:2))
+rf_mtry <- train(Total~.,
+    data = train[c(1,2,8,11:210)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 300)
+print(rf_mtry); beep(1)
+
+```
+
+```{r}
+best_mtry <- rf_mtry$bestTune$mtry
+best_rmse <- max(rf_mtry$results$RMSE)
+best_r2 <- max(rf_mtry$results$Rsquared)
+```
+
+Step 3: Search the best maxnodes 
+
+```{r}
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(5:20)) {
+    set.seed(1234)
+    rf_maxnode <- train(Total~.,
+        data = train[c(1,2,8,11:210)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    current_iteration <- toString(maxnodes)
+    store_maxnode[[current_iteration]] <- rf_maxnode
+}
+results_mtry <- resamples(store_maxnode)
+summary(results_mtry); beep(3)
+```
+
+
+Step 4: Search Best ntrees
+
+```{r}
+store_maxtrees <- list()
+for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
+    set.seed(5678)
+    rf_maxtrees <- train(Total~.,
+        data = train[c(1,2,8,11:210)],
+        method = "rf",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = 5,
+        ntree = ntree)
+    key <- toString(ntree)
+    store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree); beep(4)
+```
+
+what are the best parameters?
+ ntree = 1000 (based on low RMSE and high Rsquared)
+ mtry = 1
+ maxnodes = 5
+ 
+```{r}
+fit_rf <- train(Total~.,
+    train[c(1,2,8,11:210)],
+    method = "rf",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 550,
+    maxnodes = 5); beep(5)
+```
+
+Step 5: Evaluate the Model 
+```{r}
+rf_pred <- predict(fit_rf, test[c(1,2,8,11:210)]) # predictions 
+caret::postResample(rf_pred, test$Total)
+```
+
+Step 6: Visualize Result 
+```{r}
+varImp(fit_rf)
+```

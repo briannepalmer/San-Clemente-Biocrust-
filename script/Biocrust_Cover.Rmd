@@ -12,6 +12,7 @@ knitr::opts_knit$set(root.dir = "C:/Users/Brianne/Documents/San-Clemente-Biocrus
 ```
 
 ```{r load libraries}
+library(plyr)
 library(tidyverse)
 library(MASS)
 library(lme4)
@@ -21,44 +22,46 @@ library(multcomp)
 library(ggpubr)
 library(predictmeans)
 library(lattice)
+library(SCIBiocrust)
+library(calecopal)
 ```
 
 ```{r load data}
-data <- read.csv("data/sci_bsc_18_19_20_editMarch2021.csv")
-qqnorm(data$Total)
-data$Total <- as.integer(data$Total)
-data$ID <- as.factor(data$ID)
-data$Sample.Year <- as.factor(data$Sample.Year)
-data$Plot <- data$ï..Plot
-boxplot.stats(data$Total)$out
-boxplot.stats(data$total.log)$out # no outliers when total cover is log transformed 
+data(bsc_cover)
+bsc_cover$Total <- as.integer(bsc_cover$Total)
+bsc_cover$ID <- as.factor(bsc_cover$ID)
+bsc_cover$Sample.Year <- as.factor(bsc_cover$Sample.Year)
+bsc_cover$Plot <- bsc_cover$ï..Plot
+boxplot.stats(bsc_cover$Total)$out
+boxplot.stats(bsc_cover$total.log)$out # no outliers when total cover is log transformed 
 
 ```
 
 The goal of this script is to describe the changes to biocrust cover on SCI. Other scripts will look at the plant community and microbial community.
 
 ```{r total biocrust model}
-
-data$total.plus.1 <- data$Total + 1
-data$total.log <- log10(data$total.plus.1)
-bestmod.log <- lmer(total.log ~ Treatment + Sample.Year + Site + (1|Plot), data = data, REML=FALSE)
+bsc_cover$total.plus.1 <- bsc_cover$Total + 1
+bsc_cover$total.log <- log10(bsc_cover$total.plus.1)
+bestmod.log <- lmer(total.log ~ Treatment + Sample.Year + Site + (1|Plot), data = bsc_cover, REML=FALSE)
 summary(bestmod.log)
 Anova(bestmod.log)
 residplot(bestmod.log)
+```
 
+```{r}
 # assumption 1: Linearity 
-plot.bestmod.linearity<- plot((data$total.log), resid(bestmod.log)) # still violated?
+plot.bestmod.linearity<- plot((bsc_cover$total.log), resid(bestmod.log)) # still violated?
 qqmath(bestmod.log, id=0.05) #slightly more normal 
 # assumption 2: homogeneity of variance
-data$bestmod.log.res <- residuals(bestmod.log) #extracts residuals and adds them to a new column
-data$abs.bestmod.log.res <- abs(data$bestmod.log.res) #creates new column with the absolute value of residuals 
-data$bestmod.log.res2 <- data$abs.bestmod.log.res^2 # squares the absolute values of the residuals to give more robust estimate
-Levine.Model <- lm(bestmod.log.res2 ~ Plot, data = data)
+bsc_cover$bestmod.log.res <- residuals(bestmod.log) #extracts residuals and adds them to a new column
+bsc_cover$abs.bestmod.log.res <- abs(bsc_cover$bestmod.log.res) #creates new column with the absolute value of residuals 
+bsc_cover$bestmod.log.res2 <- bsc_cover$abs.bestmod.log.res^2 # squares the absolute values of the residuals to give more robust estimate
+Levine.Model <- lm(bestmod.log.res2 ~ Plot, data = bsc_cover)
 anova(Levine.Model) # there is a difference in the variance of residuals -- violated 
 plot(bestmod.log)
 #assumption 3: residuatls are normally distributed 
 
-boxplot(total.log ~ Treatment, data = data)
+boxplot(total.log ~ Treatment, data = bsc_cover)
 
 ```
 
@@ -69,6 +72,8 @@ summary(glht(bestmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(bestmod.log, linfct = mcp(Site= "Tukey")))
 ```
+
+
 ```{r}
 ggplot(data=data, aes(x=Site, y= Total, fill = Treatment)) + geom_boxplot() + facet_grid(.~ Sample.Year) + geom_jitter(aes(color = Treatment))
 
@@ -97,6 +102,12 @@ summary(glht(cyanomod.log, linfct = mcp(Site= "Tukey")))
 
 # cyano 2020 only 
 cyanomod.log <- lmer(log(cyano +1) ~ Treatment + Site + (1|Plot), data = data %>% filter(Sample.Year == "2020"))
+residplot(cyanomod.log)
+Anova(cyanomod.log)
+summary(glht(cyanomod.log, linfct = mcp(Treatment = "Tukey")))
+summary(glht(cyanomod.log, linfct = mcp(Site= "Tukey")))
+
+cyanomod.log <- lmer(log(Total +1) ~ Treatment + Site + (1|Plot), data = data %>% filter(Sample.Year == "2020"))
 residplot(cyanomod.log)
 Anova(cyanomod.log)
 summary(glht(cyanomod.log, linfct = mcp(Treatment = "Tukey")))
@@ -134,7 +145,7 @@ summary(glht(mossmod.log, linfct = mcp(Sample.Year = "Tukey")))
 summary(glht(mossmod.log, linfct = mcp(Site= "Tukey")))
 
 # moss 2018 and 2019 only 
-mossmod.log <- lmer(log(Moss +1) ~ Treatment + Sample.Year + Site+ (1|Plot), data = data %>% filter(Sample.Year != "2020"))
+mossmod.log <- lmer(log(Moss +1) ~ Treatment + Site+ (1|Plot), data = data %>% filter(Sample.Year == "2019"))
 residplot(mossmod.log)
 Anova(mossmod.log)
 summary(glht(mossmod.log, linfct = mcp(Treatment = "Tukey")))
@@ -154,33 +165,22 @@ residplot(mixmod.log)
 Anova(mixmod.log)
 summary(glht(mixmod.log, linfct = mcp(Treatment = "Tukey")))
 summary(glht(mixmod.log, linfct = mcp(Site= "Tukey")))
+```
 
+Make plots 
 
-new.df <- data %>% dplyr::select(Site, Treatment, Sample.Year, cyano, Lichen, Moss, Mixed, Total) %>% pivot_longer(cols = c("cyano", "Lichen", "Moss", "Mixed"), values_to = "count") %>% mutate(percent = count/40)
+```{r}
+new.df <- bsc_cover[!is.na(bsc_cover$Total),]
+new.df <- new.df %>% dplyr::select(Site, Treatment, Sample.Year, cyano, Lichen, Moss, Mixed, Total) %>% pivot_longer(cols = c("cyano", "Lichen", "Moss", "Mixed"), values_to = "count") %>% mutate(percent = count/40)
 
-
-data_summary <- function(data, varname, groupnames){
-  require(plyr)
-  summary_func <- function(x, col){
-    c(mean = mean(x[[col]], na.rm=TRUE),
-      sd = sd(x[[col]], na.rm=TRUE))
-  }
-  data_sum<-ddply(data, groupnames, .fun=summary_func,
-                  varname)
-  data_sum <- rename(data_sum, c("mean" = varname))
- return(data_sum)
-}
-
-
-df2 <- data_summary(new.df, varname="percent", 
-                    groupnames=c("name", "Treatment", "Sample.Year"))
+df2 <- summarySE(new.df, measurevar = "percent", groupvars=c("Sample.Year", "Treatment", "name"))
 head(df2)
 
 # with year as a continuous variable 
 df2$Year <- as.numeric(df2$Sample.Year)
 
 pdf("figures/biocrust_cover.pdf")
-ggplot(df2 %>% filter(Sample.Year != "2020", name != "Mixed"), aes(x=Year, y=percent*100, group=Treatment, color=Treatment)) + 
+ggplot(df2, aes(x=Year, y=percent*100, group=Treatment, color=Treatment)) + 
   geom_line() + 
   geom_point()+ 
   geom_errorbar(aes(ymin=(percent-sd)*100, ymax=(percent+sd)*100), width=.2,
@@ -191,5 +191,19 @@ ggplot(df2 %>% filter(Sample.Year != "2020", name != "Mixed"), aes(x=Year, y=per
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   theme(legend.position = "none")
 dev.off()
+
+ggplot(data = df2, aes(x = Treatment, y = percent*100, fill = Treatment)) +
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=((percent*100) -(se*100)), ymax=(percent*100) + (se*100)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Sample.Year)) + ggtitle("All Biocrust Cover") +
+    scale_fill_manual(values = cal_palette("superbloom3"))+ theme(legend.position = "top") + ylab("Percent Cover")
+
+
+df2 <- summarySE(new.df %>% filter(name == "Moss", Sample.Year != "2020"), measurevar = "percent", groupvars=c("Sample.Year", "Treatment"))
+ggplot(data = df2, aes(x = Treatment, y = percent*100, fill = Treatment)) +
+  geom_bar(sta = "identity") + 
+  geom_errorbar(aes(ymin=((percent*100) -(se*100)), ymax=(percent*100) + (se*100)), width=.2,
+                 position=position_dodge(0.05)) + theme_bw()+ facet_wrap(.~ as.factor(Sample.Year)) + ggtitle("Bryophyte Cover") +
+    scale_fill_manual(values = cal_palette("superbloom3"))+ theme(legend.position = "top") + ylab("Percent Cover")
 
 ```

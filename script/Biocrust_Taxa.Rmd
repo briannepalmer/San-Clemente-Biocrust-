@@ -195,20 +195,21 @@ md$Type <- c("pgw_burn","pgw_burn","pgw_burn","pgw_burn","pgw_control","pgw_cont
 NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = md$treatment, site = md$Site, FireType = md$FireType, id = md$id, type = md$Type) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
 
 # make the NMDS plot
-ggplot(NMDS, aes(x = MDS1, y = MDS2, col = site)) + geom_point() + 
-  stat_ellipse() + theme_bw()
+ggplot(NMDS, aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
+  stat_ellipse() + theme_bw() + theme(legend.position = "top")+
+    scale_color_manual(values = cal_palette("superbloom3"))
 
-ggplot(NMDS, aes(x = MDS1, y = MDS2, color = id)) + geom_point() + 
-  stat_ellipse(aes(fill = FireType)) + theme_bw()
+ggplot(NMDS, aes(x = MDS1, y = MDS2, color = site)) + geom_point() + 
+  stat_ellipse() + theme_bw() + theme(legend.position = "top")
 
 ggplot(NMDS %>% filter(site == "pgw"), aes(x = MDS1, y = MDS2, color = FireType)) + geom_point() + 
   stat_ellipse() + theme_bw()
 
 
 # determine if the differene is significant by doing a PERMANOVA
-adonis(genus.only ~ FireType, metadata) 
+adonis(genus.only ~ FireType, md) 
 
-pairwise.adonis(genus.only,factors=metadata$FireType)
+pairwise.adonis(genus.only,factors=md$FireType)
 pairwise.adonis(genus.only,factors=metadata$treatment)
 pairwise.adonis(genus.only,factors=metadata$site)
 
@@ -267,7 +268,7 @@ phylum.all[c(91:112)] <- sapply(phylum.all[c(91:112)],as.numeric)
 phylum.ggplot <- pivot_longer(phylum.all, cols = Acidobacteria:Verrucomicrobia, names_to = "phylum", values_to = "count")
 phylum.ggplot$Sample <- phylum.ggplot$ï..Sample
 
-phylum_pal <- cal_palette(name = "dudleya", n = 22, type = "continuous")
+phylum_pal <- cal_palette(name = "superbloom3", n = 22, type = "continuous")
 
 
 ggplot(phylum.ggplot, aes(fill = phylum, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw() + scale_fill_manual(values = phylum_pal)

@@ -143,6 +143,15 @@ macro_plant <- data.frame(macro_rm, plants.rm)
 macro_plant$Treatment <- as.factor(macro_plant$Treatment)
 macro_plant$Site <- as.factor(macro_plant$Site)
 
+macro_plant <- macro_plant %>%  mutate(Cover = rowSums(.[17:60]))
+mdl1 <- lm(Cover ~ Total, data = macro_plant)
+mdl2 <- lm(Cover ~ Total + I((Total+1)^-2), data = macro_plant)
+mdl3 <- lm(Cover ~ Total + I((Total+1)^-2) + I((Total+1)^-3), data = macro_plant)
+mdl4 <- lm(Cover ~ I((Total+1)^-2), data = macro_plant)
+
+
+ggplot(data = macro_plant, aes(x = Total, y = Cover, color = Treatment.1)) + geom_point(position = position_jitter(width = 0.5, height = 0.5)) + geom_smooth(aes(color = Treatment.1), method = lm)+ facet_grid(Treatment.1~.) + theme_bw()+  stat_regline_equation(label.x = 50, label.y = 20)+
+  stat_cor(label.x = 50, label.y = 15)
 ```
 
 Make Macro-BSC
@@ -347,7 +356,7 @@ df$vars <- row.names(df)
 
 pdf("figures/plants on total bsc without treatment and site.pdf")
 df %>% mutate(name = fct_reorder(vars, X.IncMSE)) %>% 
-ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d() + ggtitle("RF: Influence of Plants on Biocrust Cover")
 dev.off()
 ```
 
@@ -406,7 +415,7 @@ df$vars <- row.names(df)
 
 pdf("figures/bsc microbes on bsc cover.pdf")
 df %>% mutate(name = fct_reorder(vars, X.IncMSE)) %>% top_n(50) %>% 
-ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d() + ggtitle("RF: Influence of Biocrust Microbes on Biocrust Cover")
 dev.off()
 
 ```
@@ -437,6 +446,7 @@ dev.off()
 
 plant_bsc <- plant_bsc %>% mutate(plantCover = rowSums(.[211:254]))
 
+set.seed(123)
 rf <- randomForest(plantCover ~ ., ntree = 1000, importance = TRUE, data = plant_bsc[c(1:202,255)])
 print(rf)
 varImpPlot(rf,type=1)
@@ -448,8 +458,8 @@ df <- data.frame(rf$importance)
 df$vars <- row.names(df)
 
 pdf("figures/bsc microbes on plant cover.pdf")
-df %>% mutate(name = fct_reorder(vars, X.IncMSE)) %>% top_n(50) %>% 
-ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
+df %>% mutate(name = fct_reorder(vars, X.IncMSE)) %>% top_n(25) %>% 
+ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d() + ggtitle("RF: Influence of Biocrust Microbes on Plant Cover")
 dev.off()
 
 native_bsc <- plant_bsc %>% mutate(nativeCover = rowSums(.[207:208]))
@@ -489,7 +499,7 @@ df <- data.frame(rf$importance)
 df$vars <- row.names(df)
 
 pdf("figures/bsc microbes on non-nativeplant cover.pdf")
-df %>% mutate(name = fct_reorder(vars, X.IncMSE)) %>% top_n(50) %>% 
+df %>% mutate(name = fct_reorder(vars, X.IncMSE)) %>% top_n(25) %>% 
 ggplot(aes(x = name, y = X.IncMSE)) + geom_bar(stat = "identity", aes(fill = name)) + coord_flip() + xlab("") + ylab("Percent Change in Mean Squared Error") + theme_bw() + theme(legend.position = "none") + scale_fill_viridis_d()
 dev.off()
 
@@ -550,8 +560,8 @@ test <- macro[-train_ind,]
 rf <- randomForest(Treatment ~ ., ntree = 1000, importance = TRUE, data = train[c(2,5:8)])
 print(rf)
 varImpPlot(rf)
-predicion_for_table <- predict(rf, test[,-9])
-table(observed = test[,8], predicted = predicion_for_table)
+predicion_for_table <- predict(rf, test)
+table(observed = test[,-9], predicted = predicion_for_table)
 rf.roc <- roc(train$Treatment, rf$votes[,2])
 plot(rf.roc)
 auc(rf.roc)
@@ -670,7 +680,7 @@ plant_bsc_mod <- lmer(log(Total+1) ~ log(total_plant+1) + (1|ID), data = macro_p
 Anova(plant_bsc_mod)
 macro_plant$Total_log <- log(macro_plant$Total +1)
 
-ggplot(macro_plant, aes(x = Total_log, y = total_plant, color = Treatment)) + geom_point() + geom_smooth(method = "glm") + facet_grid(.~Treatment)+ stat_cor()
+ggplot(macro_plant, aes(x = Total_log, y = total_plant, color = Treatment)) + geom_point() + geom_smooth(method = "glm") + facet_grid(.~Treatment)+ stat_cor() + theme_bw()
 
 ggplot(macro_plant, aes(x = log(Total + 1), y = log(total_plant+1))) + geom_point(aes(color = Treatment)) + geom_smooth(method = "lm") + stat_cor() + theme_bw()
 
