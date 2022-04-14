@@ -1,0 +1,1616 @@
+---
+title: "MicrobialEcology_Submission"
+author: "Brianne"
+date: "12/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/San-Clemente-Biocrust-")
+```
+
+```{r load libraries}
+library(tidyverse)
+library(MASS)
+library(lme4)
+library(car)
+library(emmeans)
+library(multcomp)
+library(ggpubr)
+library(rcompanion)
+library(calecopal)
+library(MuMIn)
+library(vegan)
+library(randomForest)
+library(predictmeans)
+library(SCIBiocrust)
+library(ape)
+library(vegan)
+library(dplyr)
+library(scales)
+library(grid)
+library(reshape2)
+library(phyloseq)
+library(magrittr)
+library(circlize)
+library(data.table)
+library(igraph)
+library(pairwiseAdonis)
+library(patchwork)
+```
+
+```{r}
+rm(list=ls()) 
+```
+
+```{r load data}
+data("bsc.funct")
+bsc.level3 <- bsc.funct %>%  dplyr::select(level3, pgeb.1:rcc.4)
+bsc.level3  <- aggregate(. ~ level3, transform(bsc.level3, level3 = level3), sum)
+rownames(bsc.level3) <- bsc.level3$level3
+bsc.level3$level3 <- NULL
+bsc.level3.transposed <- as.data.frame(t(as.matrix(bsc.level3)))
+rownames(bsc.level3.transposed) <- colnames(bsc.level3)
+colnames(bsc.level3.transposed) <- rownames(bsc.level3)
+data("metadata")
+metadata <- metadata[c(1:24),]
+bsc.level3.all <- as.data.frame(c(metadata, bsc.level3.transposed))
+
+```
+
+### Microbial Community
+
+```{r microbial community}
+data("metadata")
+data("all.taxa")
+data("bsc_taxa")
+```
+
+```{r}
+data("bsc_cover")
+genus.only <- bsc_taxa[,-c(1:90)]
+genus.only <- genus.only %>% mutate_all(as.numeric)
+genus.only[is.na(genus.only)] <- 0
+md <- bsc_cover %>% filter(Sample.Year == 2018, Treatment != "rx/wild")
+md <- md %>%  mutate_at(vars(Density_mean, Cover_mean,ng.cov_mean:nf.den_mean),as.numeric)
+# md <- md %>% mutate_at(vars(Density_mean, Cover_mean, ng.cov_mean:nf.den_mean),replace_na, '0')
+md <- md %>%  group_by(treatment, Site) %>% summarize_at(vars(Density_mean:nf.den_mean),list(mean = mean))
+
+n <- 4
+pgwburn <- do.call("rbind", replicate(n, md[2,], simplify = FALSE))
+pgwcont <- do.call("rbind", replicate(n, md[5,], simplify = FALSE))
+pgeburn <- do.call("rbind", replicate(n, md[1,], simplify = FALSE))
+pgecont <-do.call("rbind", replicate(n, md[4,], simplify = FALSE))
+rcburn <- do.call("rbind", replicate(n, md[3,], simplify = FALSE))
+rccont <- do.call("rbind", replicate(n, md[6,], simplify = FALSE))
+
+md <- data.frame(rbind(pgwburn, pgwcont, pgeburn, pgecont, rcburn, rccont))
+
+genus.nmds <- metaMDS(genus.only, trace = FALSE, trymax=100, "bray")
+genus.nmds$stress 
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = genus.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = genus.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+md$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+md$id <-c("bsc1", "bsc2", "bsc3", "bsc4", "bsc5", "bsc6", "bsc7", "bsc8", "bsc9", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24")
+md$Type <- c("pgw_burn","pgw_burn","pgw_burn","pgw_burn","pgw_control","pgw_control","pgw_control","pgw_control", "pge_burn","pge_burn","pge_burn","pge_burn","pge_control","pge_control","pge_control","pge_control","rc_burn", "rc_burn", "rc_burn", "rc_burn", "rc_control", "rc_control", "rc_control", "rc_control")
+md$Fire.Type <- c("prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017", "prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017","wildfire", "wildfire", "wildfire", "wildfire", "control2012", "control2012", "control2012", "control2012")
+```
+
+Revision -- make separate NMDS plots comparing rx to controls and wild to controls
+```{r}
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = md$treatment, site = md$Site, FireType = md$FireType, id = md$id, Fire.Type = md$Fire.Type) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+```
+
+```{r}
+library(pairwiseAdonis)
+set.seed(1234)
+genus.dist <- vegdist(genus.only, method = "bray")
+adonis2(genus.dist~ Fire.Type, md) 
+pairwise.adonis(genus.dist, md$Fire.Type)
+```
+
+```{r}
+taxanmds <- ggplot(NMDS, aes(x = MDS1, y = MDS2, col = Fire.Type)) + geom_point() + 
+  stat_ellipse() + theme_bw() + theme(text=element_text(size=30))  + theme(legend.position = "bottom") +
+    scale_color_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon"))+ annotate("text", x=0.6, y=0.7, label= "R2 = 0.14", size = 5) + annotate("text", x=0.6, y=0.65, label= "P = 0.334", size = 5) + annotate("text", x=0.6, y=0.60, label= "stress = 0.096", size = 5)
+
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/San-Clemente-Biocrust-/figures/taxaNMDSRevised.pdf", height = 12, width = 12)
+taxanmds
+dev.off()
+```
+
+```{r}
+# pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/San-Clemente-Biocrust-/figures/taxaNMDS.pdf")
+# taxanmds <- ggplot(NMDS, aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
+#   stat_ellipse() + theme_bw() +
+#     scale_color_manual(values = c("dodgerblue4", "gold", "salmon")) + theme(text=element_text(size=30))  + theme(legend.position = "bottom")
+# dev.off()
+# 
+# ggplot(NMDS, aes(x = MDS1, y = MDS2, color = site)) + geom_point() + 
+#   stat_ellipse() + theme_bw() + theme(legend.position = "top")
+# 
+# # determine if the differene is significant by doing a PERMANOVA
+# adonis(genus.only ~ Type2, md) 
+# 
+# env <- md[c(3:90)]
+# 
+# env.fit <- envfit(genus.nmds,env , permutations = 999, na.rm = TRUE)
+# 
+# env.fit$vectors
+
+```
+
+Make stacked bar plots and heat maps 
+
+```{r}
+
+all.taxa[c(8:31)] <- sapply(all.taxa[c(8:31)],as.numeric)
+all.taxa$Sum <-rowSums(all.taxa[c(8:31)]) 
+one_percent <- all.taxa %>% filter(Sum < 0.01)
+one_percent_summed <- colSums(one_percent[c(8:31)])
+one_percent <- one_percent %>%  dplyr::select(genus, X1:X24)
+head(one_percent)
+```
+
+```{r}
+one_percent <- aggregate(. ~ genus, transform(one_percent, genus = genus), sum)
+rownames(one_percent) <- one_percent$genus
+one_percent$genus <- NULL
+head(one_percent)
+```
+
+```{r}
+one_percent.transposed <- as.data.frame(t(as.matrix(one_percent)))
+rownames(one_percent.transposed) <- colnames(one_percent)
+colnames(one_percent.transposed) <- rownames(one_percent)
+remove <- colnames(one_percent.transposed)
+genus.df <- bsc_taxa[-which(names(bsc_taxa) %in% remove)]
+less_1_percent <- rowSums(one_percent.transposed)
+genus.df$less_1_percent <- less_1_percent
+
+remove.2 <- one_percent$genus
+all.taxa.df <- all.taxa %>% filter(!genus %in% remove)
+
+one_percent_vector <- c("One Percent", "One Percent", "One Percent", "One Percent", "One Percent", "One Percent", rowSums(one_percent[1:24]))
+
+all.taxa.df <- rbind(all.taxa.df, one_percent_vector)
+```
+
+```{r}
+
+phylum <- all.taxa.df %>%  dplyr::select(phylum, X1:X24)
+head(phylum)
+```
+
+```{r}
+phylum[c(2:25)] <- sapply(phylum[c(2:25)],as.numeric)
+phylum <- aggregate(. ~ phylum, transform(phylum, phylum = phylum), sum)
+rownames(phylum) <- phylum$phylum
+phylum$phylum <- NULL
+head(phylum)
+```
+
+```{r}
+phylum.transposed <- as.data.frame(t(as.matrix(phylum)))
+rownames(phylum.transposed) <- colnames(phylum)
+colnames(phylum.transposed) <- rownames(phylum)
+
+phylum.all <- as.data.frame(c(md, phylum.transposed))
+phylum.all[c(94:115)] <- sapply(phylum.all[c(94:115)],as.numeric)
+phylum.all[is.na(phylum.all)] <- 0
+phylum.ggplot <- pivot_longer(phylum.all, cols = Acidobacteria:Verrucomicrobia, names_to = "phylum", values_to = "count")
+
+phylum_pal <- cal_palette(name = "superbloom3", n = 22, type = "continuous")
+
+```
+
+```{r}
+pdf("figures/phylumBarPlot.pdf", width = 20, height = 20)
+phlym.plot <- ggplot(phylum.ggplot, aes(fill = phylum, y = count, x = FireType)) + geom_bar(position = "fill", stat = "identity") + theme_bw() + scale_fill_manual(values = phylum_pal)+ theme(text=element_text(size=40))
+dev.off()
+
+```
+
+
+```{r}
+
+cyanobacteria <- all.taxa.df %>%  filter(phylum == "Cyanobacteria") %>% dplyr::select(genus, X1:X24)
+cyanobacteria[c(2:25)] <- sapply(cyanobacteria[c(2:25)],as.numeric)
+cyanobacteria <- aggregate(. ~ genus, transform(cyanobacteria, genus = genus), sum)
+rownames(cyanobacteria) <- cyanobacteria$genus
+cyanobacteria$genus <- NULL
+cyanobacteria.transposed <- as.data.frame(t(as.matrix(cyanobacteria)))
+rownames(cyanobacteria.transposed) <- colnames(cyanobacteria)
+colnames(cyanobacteria.transposed) <- rownames(cyanobacteria)
+
+cyanobacteria.all <- as.data.frame(c(metadata, cyanobacteria.transposed))
+cyanobacteria.all$Sample <- c("bsc01", "bsc02", "bsc03", "bsc04", "bsc05", "bsc06", "bsc07", "bsc08", "bsc09", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24")
+cyanobacteria.all$FireType <- c("prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control","prescribed","prescribed","prescribed","prescribed","control", "control", "control", "control", "wildfire", "wildfire", "wildfire", "wildfire", "control", "control", "control", "control")
+cyanobacteria.all[c(91:106)] <- sapply(cyanobacteria.all[c(91:106)],as.numeric)
+cyanobacteria.ggplot <- pivot_longer(cyanobacteria.all, cols = Acaryochloris:Trichodesmium, names_to = "genus", values_to = "count")
+```
+
+```{r}
+pdf("figures/cyanoBarPlot.pdf", width = 10, height =10)
+cyanobacteria <- ggplot(cyanobacteria.ggplot, aes(fill = genus, y = count, x = FireType)) + geom_bar(position = "fill", stat = "identity") + theme_bw() + theme(text=element_text(size=30))
+dev.off()
+
+```
+
+```{r}
+pdf("figures/barplots.pdf", width = 50, height = 25)
+phlym.plot + cyanobacteria
+dev.off()
+```
+
+```{r}
+
+ascomycota <- all.taxa.df %>%  filter(phylum == "Ascomycota") %>% dplyr::select(genus, X1:X24)
+ascomycota[c(2:25)] <- sapply(ascomycota[c(2:25)],as.numeric)
+ascomycota <- aggregate(. ~ genus, transform(ascomycota, genus = genus), sum)
+rownames(ascomycota) <- ascomycota$genus
+ascomycota$genus <- NULL
+ascomycota.transposed <- as.data.frame(t(as.matrix(ascomycota)))
+rownames(ascomycota.transposed) <- colnames(ascomycota)
+colnames(ascomycota.transposed) <- rownames(ascomycota)
+
+ascomycota.all <- as.data.frame(c(metadata, ascomycota.transposed))
+ascomycota.all[c(92:111)] <- sapply(ascomycota.all[c(92:111)],as.numeric)
+ascomycota.ggplot <- pivot_longer(ascomycota.all, cols = Ajellomyces:Uncinocarpus, names_to = "genus", values_to = "count")
+ascomycota.ggplot$Sample <- ascomycota.ggplot$ï..Sample
+```
+
+```{r}
+ggplot(ascomycota.ggplot, aes(fill = genus, y = count, x = FireType)) + geom_bar(position = "fill", stat = "identity") + theme_bw()
+
+```
+
+```{r}
+phylum <- all.taxa.df %>% dplyr::select(phylum, X1:X24)
+phylum[c(2:25)] <- sapply(phylum[c(2:25)],as.numeric)
+phylum <- aggregate(. ~ phylum, transform(phylum, phylum = phylum), sum)
+rownames(phylum) <- phylum$phylum
+phylum$phylum <- NULL
+phylum.transposed <- as.data.frame(t(as.matrix(phylum)))
+rownames(phylum.transposed) <- colnames(phylum)
+colnames(phylum.transposed) <- rownames(phylum)
+
+phylum.all <- as.data.frame(c(metadata, phylum.transposed))
+phylum.all[c(91:111)] <- sapply(phylum.all[c(91:111)],as.numeric)
+phylum.ggplot <- pivot_longer(phylum.all, cols = Acidobacteria:Verrucomicrobia, names_to = "phylum", values_to = "count")
+phylum.ggplot$Sample <- phylum.ggplot$ï..Sample
+
+ggplot(phylum.ggplot, aes(fill = phylum, y = count, x = treatment)) + geom_bar(position = "fill", stat = "identity") + facet_wrap(.~ site) + theme_bw()
+
+Anova(lm(One.Percent ~ treatment* site, data = phylum.all)) # differs by site 
+Anova(lm(Planctomycetes ~ treatment* site, data = phylum.all)) # differs by site, almost by treatment
+
+```
+
+```{r}
+# find the percentage of each group 
+
+View(all.taxa)
+all.taxa$domain <- all.taxa$ï..domain
+archaea <- all.taxa %>% filter(domain == "Archaea")
+bacteria <- all.taxa %>% filter(domain == "Bacteria")
+eukaryota <- all.taxa %>% filter(domain =="Eukaryota")
+viruses <- all.taxa %>% filter(domain == "Viruses")
+
+per.archaea = (sum(archaea[7:30])/sum(all.taxa[7:30]))*100 # 0.5 % Archaea
+per.bacteria = (sum(bacteria[7:30])/sum(all.taxa[7:30]))*100 # 91.14 % Bacteria
+per.eukaryota = (sum(eukaryota[7:30])/sum(all.taxa[7:30]))*100 # 6.26% Eukaryote
+per.viruses = (sum(viruses[7:30])/sum(all.taxa[7:30]))*100 # 2.10% viruses 
+
+actino <- all.taxa %>% filter(phylum == "Actinobacteria")
+sum(actino[7:30])/sum(all.taxa[7:30])
+
+proteo <- all.taxa %>% filter(phylum == "Proteobacteria")
+sum(proteo[7:30])/sum(all.taxa[7:30])
+
+cyano <- all.taxa %>% filter(phylum == "Cyanobacteria")
+sum(cyano[7:30])/sum(all.taxa[7:30])
+
+```
+
+#### Biodiversity Plots
+```{r}
+# Richness and Diversity Analysis 
+
+bsc_taxa$FireType <- c("prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017", "prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017","wildfire", "wildfire", "wildfire", "wildfire", "control2012", "control2012", "control2012", "control2012")
+```
+
+```{r}
+# filter and remove metadata 
+prescribed <- (bsc_taxa %>% filter(FireType == "prescribed"))[-c(1:90)]
+wildfire <- (bsc_taxa %>% filter(FireType == "wildfire"))[-c(1:90)]
+control2012 <- (bsc_taxa %>% filter(FireType == "control2012"))[-c(1:90)]
+control2017 <- (bsc_taxa %>% filter(FireType == "control2017"))[-c(1:90)]
+```
+
+```{r}
+prescribed <- prescribed %>% mutate_all(as.numeric)
+wildfire <- wildfire %>% mutate_all(as.numeric)
+control2012 <- control2012 %>% mutate_all(as.numeric)
+control2017 <- control2017 %>% mutate_all(as.numeric)
+```
+
+```{r}
+prescribed[is.na(prescribed)] <- 0
+wildfire[is.na(wildfire)] <- 0
+control2012[is.na(control2012)] <- 0
+control2017[is.na(control2017)] <- 0
+```
+
+```{r}
+prescribed.rich <- specnumber(prescribed)
+wildfire.rich <- specnumber(wildfire)
+control2012.rich <- specnumber(control2012)
+control2017.rich <- specnumber(control2017)
+prescribed.div <- vegan::diversity(prescribed)
+wildfire.div <- vegan::diversity(wildfire)
+control2012.div <- vegan::diversity(control2012)
+control2017.div <- vegan::diversity(control2017)
+```
+# make a vector for richness and diversity 
+
+```{r}
+richness <- c(prescribed.rich, wildfire.rich, control2012.rich, control2017.rich)
+diversity <- c(prescribed.div, wildfire.div, control2012.div, control2017.div)
+```
+
+```{r}
+# make new data frame 
+FireType <- bsc_taxa$FireType
+Site <- bsc_taxa$site
+
+rich.div <- data.frame(Site, FireType, richness, diversity)
+```
+
+```{R}
+rich.lm <- lm(richness ~ FireType, data = rich.div)
+rich.aov <- aov(rich.lm)
+
+TukeyHSD(rich.aov)
+```
+
+```{r}
+x = residuals(rich.lm)
+plotNormalHistogram(x)
+plot(fitted(rich.lm),
+     residuals(rich.lm))
+plot(rich.lm)
+```
+
+```{r}
+marginal = lsmeans(rich.lm,
+                   ~ FireType * Site)
+
+pairs(marginal,
+      adjust="tukey")
+
+CLD = cld(marginal,
+          alpha   = 0.05,
+          Letters = letters,         
+          adjust  = "tukey")      
+
+CLD # all richness values are similar 
+```
+
+```{r}
+div.lm <- lm(diversity ~ FireType, data = rich.div)
+div.aov <- aov(div.lm)
+TukeyHSD(div.aov)
+```
+
+```{r}
+x = residuals(div.lm)
+plotNormalHistogram(x)
+plot(fitted(div.lm),
+     residuals(div.lm))
+plot(div.lm)
+```
+
+```{r}
+marginal = lsmeans(div.lm,
+                   ~ treatment*site)
+
+pairs(marginal,
+      adjust="tukey")
+
+CLD = cld(marginal,
+          alpha   = 0.05,
+          Letters = letters,         
+          adjust  = "tukey")      
+
+CLD # all diversity values are similar 
+
+```
+
+```{r}
+richness.plot <- ggplot(data = rich.div, aes(x = FireType, y = richness, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon")) + theme(text=element_text(size=30)) + labs(y = "Genus Number")
+
+pdf("figures/richness.pdf")
+richness.plot
+dev.off()
+
+
+```
+
+```{r}
+diversity.plot <- ggplot(data = rich.div, aes(x = FireType, y = diversity, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon")) + theme(text=element_text(size=30)) + labs(y = "Shannon-Weiner Index")
+
+pdf("figures/diversity.pdf")
+diversity.plot
+dev.off()
+```
+
+#### Measured Functions
+```{r chl model}
+data("chl")
+
+chl$site <- chl$ï..site
+chl$year <- as.factor(chl$year)
+chl$FireType <- c("prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012","prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "wildfire",  "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012",  "control2012")
+chl$FireType <- as.factor(chl$FireType)
+
+#boxplot.stats(chl$chl_total_mg_per_g)$out
+# remove outliers 
+#chl.rm.out <- chl[-c(95,107,104,76,112,121),]
+
+chl.mod <- lmer(chl_total_mg_per_g ~ site + FireType + year + (1|ID), data = chl)
+chl.mod <- lmer(chl_total_mg_per_g ~ FireType + (1|ID), data = chl)
+residplot(chl.mod)
+Anova(chl.mod)
+
+summary(glht(chl.mod, linfct = mcp(FireType = "Tukey"))) # less chlorophyll in 2019 compared to 2018
+```
+
+```{r eps model}
+data("eps")
+eps$Year <- as.factor(eps$Year)
+
+eps.mod <- lmer(Conc_mg_g ~ FireType + (1|BSC_ID), data = eps)
+residplot(eps.mod)
+Anova(eps.mod)
+
+summary(glht(eps.mod, linfct = mcp(FireType = "Tukey"))) 
+
+```
+
+
+```{r nfix model}
+data("nfix")
+nfix$FireType <- c("control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed","control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed","control2012", "control2012", "control2012", "control2012", "control2012", "control2012", "wildfire", "wildfire" ,"wildfire" ,"wildfire" , "wildfire" , "wildfire" ,"control2012", "control2012", "control2012", "control2012", "control2012", "control2012", "wildfire", "wildfire" ,"wildfire" ,"wildfire" , "wildfire" , "wildfire" ,"control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed","control2017", "control2017", "control2017", "control2017", "control2017", "control2017", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed", "prescribed")
+nfix$Year<- as.factor(nfix$Year)
+nfix$ID <- nfix$ï..Identifier.1
+nfix$Site <- as.factor(nfix$Site)
+nfix$FireType <- as.factor(nfix$FireType)
+nfix$BNF <- as.numeric(nfix$BNF_day)/24
+nfix$Treatment <- as.factor(nfix$Treatment)
+#nfix$Type <- as.factor(nfix$Type)
+boxplot.stats(nfix$BNF)$out
+nfix.no.out <- nfix[-c(62,35,36),]
+
+nfix.mod <- glm(log(BNF) ~ FireType, data = nfix.no.out)
+residplot(nfix.mod)
+Anova(nfix.mod) # difference between year 
+summary(glht(nfix.mod, linfct = mcp(FireType = "Tukey")))
+
+```
+
+```{r}
+chlplot <- ggplot(data = chl, aes(x = FireType, y = chl_total_mg_per_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon")) + xlab("Fire Type") + ylab("Total Chlorophyll (mg/g)") + theme(legend.position = "none") + theme(text=element_text(size=20))+ labs(x = "Fire Type")
+
+chlplot
+```
+
+```{r}
+eps.plot <- ggplot(data = eps, aes(x = FireType, y = Conc_mg_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen", "gold", "salmon")) + xlab("Fire Type") + ylab("Total EPS (mg/g)") + theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")
+eps.plot
+```
+
+```{r}
+nfix.plot <- ggplot(data = nfix, aes(x = FireType, y = BNF, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen", "gold", "salmon")) + xlab("Fire Type") + ylab("nmol N Uptake/mg *DW/ hour") + theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")
+
+nfix.plot
+```
+
+
+
+#### Microbial Functions
+
+```{r nmds function}
+level3.only <- bsc.level3.all[-c(1:90)]
+level3.nmds <- metaMDS(level3.only, trace = FALSE, trymax = 100, "bray")
+level3.nmds$stress
+
+# make the NMDS plot and analyze dissimilarities 
+
+#build a data frame with NMDS coordinates and metadata 
+MDS1 = level3.nmds$points[,1] # adds the points of the NMDS 1 dimmension
+MDS2 = level3.nmds$points[,2] # adds the points of the NMDS 2 dimmension
+
+metadata$FireType <- c("prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017", "prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017","wildfire", "wildfire", "wildfire", "wildfire", "control2012", "control2012", "control2012", "control2012")
+
+NMDS = data.frame(MDS1 = MDS1, MDS2 = MDS2, treatment = metadata$treatment, site = metadata$site, FireType = metadata$FireType) # this builds a dataframe with the NMDS dimmensions, treatment, site, and burn year 
+```
+# make the NMDS plot
+
+```{r}
+set.seed(1234)
+# determine if the differene is significant by doing a PERMANOVA
+level3.dist <- vegdist(level3.only, method = "bray")
+adonis2(level3.dist ~ FireType, metadata) 
+
+pairwise.adonis(level3.dist, metadata$FireType)
+
+function.nmds <- ggplot(NMDS, aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
+  stat_ellipse() + theme_bw() + scale_color_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon"))  + theme(text=element_text(size=30)) + theme(legend.position = "bottom")+ annotate("text", x=0.1, y=0.20, label= "R2 = 0.15", size = 5) + annotate("text", x=0.1, y=0.18, label= "P = 0.244", size = 5) + annotate("text", x=0.1, y=0.16, label= "stress = 0.093", size = 5)
+
+
+pdf("figures/functionNMDSrevised.pdf", height = 12, width = 12)
+function.nmds
+dev.off()
+
+
+```
+
+```{r}
+pdf("figures/figure4.pdf", width = 12, height = 12)
+(richness.plot + diversity.plot)/(taxanmdsred + function.nmds)
+dev.off()
+```
+
+
+```{r}
+bsc.level3.all$FireType<- c("prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017", "prescribed","prescribed","prescribed","prescribed","control2017","control2017","control2017","control2017","wildfire", "wildfire", "wildfire", "wildfire", "control2012", "control2012", "control2012", "control2012")
+bsc.level3.all$FireType <- as.factor(bsc.level3.all$FireType)
+
+n.fix <- glm(Nitrogen_fixation ~ FireType, data = bsc.level3.all)
+Anova(n.fix)
+plot(n.fix)
+summary(glht(n.fix, linfct = mcp(FireType = "Tukey")))
+```
+
+```{r}
+eps <- glm(Exopolysaccharide_Biosynthesis ~ FireType, data = bsc.level3.all)
+Anova(eps)
+plot(eps)
+summary(glht(eps, linfct = mcp(FireType = "Tukey")))
+```
+
+```{r}
+chl <- glm(Chlorophyll_Biosynthesis ~ FireType, data = bsc.level3.all)
+Anova(chl)
+plot(chl)
+summary(glht(chl, linfct = mcp(FireType = "Tukey")))
+```
+
+```{r}
+eps.genes <- ggplot(bsc.level3.all, aes(x = FireType, y = Exopolysaccharide_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")
+
+```
+
+```{r}
+nfix.genes <- ggplot(bsc.level3.all, aes(x = FireType, y = Nitrogen_fixation, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen", "gold", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")
+
+```
+
+```{r}
+chl.genes <- ggplot(bsc.level3.all, aes(x = FireType, y = Chlorophyll_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen" ,"gold", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")
+
+```
+
+```{r}
+pdf("figures/allfunctions.pdf", height = 12, width = 12)
+(chlplot + chl.genes)/(eps.plot + eps.genes)/(nfix.plot + nfix.genes)
+dev.off()
+
+```
+
+#### Network Analysis 
+
+```{r}
+meta <- SCIBiocrust::metadata
+meta <- meta[c(1,2,3,5)]
+meta$fire.type <- c("rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "wild", "wild", "wild", "wild", "cont12", "cont12", "cont12", "cont12")
+meta <- meta %>% dplyr::rename(Sample = ï..Sample)
+
+#control 2017 only 
+meta <- meta %>% filter(fire.type == "cont17")
+
+sampleData <- sample_data(meta)
+
+sample_names(sampleData) <- c("bsc5", "bsc6", "bsc7", "bsc8", "bsc13", "bsc14", "bsc15", "bsc16")
+```
+
+###Import otu table
+```{r}
+taxon <- SCIBiocrust::all.taxa
+colnames(taxon) <- c("domain", "phylum","class", "order", "family", "genus", "otu", "bsc1", "bsc2", "bsc3", "bsc4", "bsc5", "bsc6", "bsc7", "bsc8", "bsc9", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24", "sum")
+
+taxon <- taxon[c(1:7, 12:15, 20:23)] # keep only control17 samples
+taxon$sum <- rowSums(taxon[,c(8:15)])
+
+taxon$sum <- as.vector(taxon$sum)
+taxon[with(taxon, order("sum"))]
+# use only the top 500 most abundant 
+
+#taxon500 <- taxon[c(1:500),] # try it again with all taxa
+taxon500 <- taxon
+#taxon <- taxon %>% filter(domain != "Eukaryota")
+otu_table <- taxon500 %>%  dplyr::select(otu, bsc5:bsc16)
+
+otu_table <- aggregate(. ~ otu, transform(otu_table, otu = otu), sum)
+otu_table[is.na(otu_table)] <- 0
+rownames(otu_table) <- otu_table$otu
+otu <- rownames(otu_table)
+otu_table <- otu_table[-1]
+otumat <- as(as.matrix(otu_table), "matrix")
+#otumat$sample_names <- c("sa1","sa2","sa3","sa4","sa5","sa6","sa7","sa8","sa9","sa10","sa11","sa12","sa13","sa14","sa15","sa16","sa17","sa18","sa19" ,"sa20" ,"sa21" ,"sa22" ,"sa23" ,"sa24")
+OTU = otu_table(as.matrix(otumat), taxa_are_rows = TRUE)
+```
+
+###Import taxonomy table
+```{r}
+taxonomy_table <- taxon500[c(1:6)]
+taxmat <- as(as.matrix(taxonomy_table),"matrix")
+rownames(taxmat) <- otu
+
+TAX = tax_table(as.matrix(taxmat))
+```
+
+###Construct phyloseq object
+```{r}
+physeq = phyloseq(OTU,TAX,sampleData)
+```
+
+```{r}
+physeq
+```
+
+```{r}
+plot_bar(physeq, fill = "phylum")
+
+```
+
+###STEP9: Remove singletons
+Remove any OTUs that have a relative abundance less than 1%
+
+```{r}
+physeq.prune = prune_taxa(taxa_sums(physeq) > 0.01, physeq)
+```
+
+```{r}
+physeq.prune
+```
+
+###STEP10: Plot read counts to check dataset
+Check read counts: any samples that have very low reads should be removed.
+[Ref](http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html)
+
+```{r}
+readcount = data.table(as(sample_data(physeq.prune), "data.frame"),
+                 TotalReads = sample_sums(physeq.prune), 
+                 keep.rownames = TRUE)
+setnames(readcount, "rn", "SampleID")
+#For plotting, use command below.
+SeqDepth = ggplot(readcount, aes(TotalReads)) + geom_histogram() + ggtitle("Sequencing Depth")
+SeqDepth
+
+```
+```{r}
+readcount = readcount[order(readcount$TotalReads), c("SampleID", "TotalReads")]
+```
+
+```{r}
+head(readcount)
+```
+####Transform data to presence/absence
+```{r}
+transform.physeq.prune = transform_sample_counts(physeq.prune, function(abund) 1*(abund>0))
+```
+
+```{r}
+transform.physeq.prune
+```
+agglomerate at Phylum level
+
+```{r}
+ps.taxglom = tax_glom(transform.physeq.prune, taxrank="order")
+```
+
+```{r}
+ps.taxglom
+```
+
+```{r}
+head(tax_table(ps.taxglom))
+```
+
+```{r}
+ig <-make_network(physeq.prune, "taxa", max.dist=0.4)
+pdf("figures/control17_network.pdf")
+control.network <-plot_network(ig, physeq.prune, type = "taxa", color = "phylum", shape = "domain", label = NA, point_size = 2)+ theme(text=element_text(size=15)) 
+control.network
+dev.off()
+```
+
+```{r}
+
+#write.csv(as.data.frame(net$data), "output/control_network_data.csv")
+
+```
+
+###STEP14:Plot network (Phyloseq)
+```{r warning=FALSE}
+#ps.taxglom.prune = prune_taxa(names(sort(taxa_sums(ps.taxglom), TRUE))[1:10], ps.taxglom)
+pdf("figures/network analysis.order.control17.pdf")
+set.seed(200)
+psplotnet = plot_net(physeq.prune, distance = "bray", type = "taxa", laymeth = "fruchterman.reingold", color = "phylum", point_label = "genus", shape = "domain" ,hjust = 0.3, maxdist = 0.7) + ggtitle("Biocrust Microbial Community Network Analysis")  + theme(plot.title = element_text(hjust = 0.5))+
+    theme(legend.position="bottom")
+psplotnet
+dev.off()
+
+layout_nicely(ig)
+```
+
+###STEP15:Add data table from plot network to "df" variable
+
+```{r}
+df = psplotnet$data
+```
+
+```{r}
+df.v1 = data.frame(OTU1 = df$v1, stringsAsFactors = T )
+```
+
+```{r}
+df.v2 = data.frame(OTU1 = df$v2, stringsAsFactors = T )
+```
+
+```{r}
+df.v1.v2 = rbind(df.v1,df.v2)
+```
+
+```{r}
+df.v1.v2
+```
+
+```{r}
+tax.circlize <- taxon500
+```
+
+construct data.frame by assigning "v1" to OTU1, "v2" to OTU2, and "Distance" to Similarity (using 1-dissimilarity (1-df$Distance))
+
+```{r}
+cdf = data.frame(OTU1 = df$v1, OTU2 = df$v2, Similarity = as.vector(1-df$Distance), stringsAsFactors = TRUE )
+```
+
+```{r}
+cdf
+```
+
+```{r}
+cdf.w.tax = data.frame(OTU1=tax.circlize[match(cdf$OTU1, tax.circlize$otu), 6], OTU2=tax.circlize[match(cdf$OTU2, tax.circlize$otu), 6], Similarity=cdf$Similarity, OTU1_phylum= tax.circlize[match(cdf$OTU1, tax.circlize$otu), 2], OTU2_phylum= tax.circlize[match(cdf$OTU2, tax.circlize$otu), 2])
+```
+
+```{r}
+cdf.w.tax
+```
+
+###STEP16:Plot network using circlize package
+
+clear any object that might be drawn by circlize before.
+
+```{r}
+circos.clear()
+```
+
+Plot network from "cdf" data frame that was constructed from Phyloseq plot network
+
+link.visible: plot any of the collumn#3 that similarity is greater than certain number in this case 0.8.
+for (si in get.all.setor.index()) is used to re-label OTUs name, so they are not on top of each others. (You can try plotting without for (si in get.all.setor.index()) to see how it would look )
+
+```{r}
+chordDiagram(cdf.w.tax, annotationTrack = "grid", annotationTrackHeight = 0.01, preAllocateTracks = 1, link.visible = cdf.w.tax[[3]] > 0.75) 
+for(si in get.all.sector.index()) {
+    xlim = get.cell.meta.data("xlim", sector.index = si, track.index = 1)
+    ylim = get.cell.meta.data("ylim", sector.index = si, track.index = 1)    
+    circos.text(mean(xlim), ylim[1], si, facing = "clockwise", adj = c(-0.1, -0.2),
+    niceFacing = TRUE, cex = 1.2, col = "black", sector.index = si, track.index = 1)
+} 
+circos.clear()
+
+```
+
+Make plot for what genera cyanobateria are connected to 
+```{r}
+cyano <- cdf.w.tax %>% filter(OTU1_phylum == "Cyanobacteria" | OTU2_phylum == "Cyanobacteria")
+
+OTU1 <- cyano$OTU1_phylum
+
+phylum.df <- as.data.frame(OTU1)
+phylum.df$OTU2 <- cyano$OTU2_phylum
+phylum.df$Similarity <- cyano$Similarity
+
+circos.clear()
+```
+
+```{r}
+
+pdf("figures/cyano17_network.pdf",  width = 18, height = 18)
+control.cyano.network <- chordDiagram(phylum.df, annotationTrack = "grid", annotationTrackHeight = 0.01, preAllocateTracks = 1, link.visible = phylum.df[3] > 0.75)
+for(si in get.all.sector.index()) {
+    xlim = get.cell.meta.data("xlim", sector.index = si, track.index = 1)
+    ylim = get.cell.meta.data("ylim", sector.index = si, track.index = 1)
+    circos.text(mean(xlim), ylim[1], si, facing = "clockwise", adj = c(-0.1, -0.2),
+    niceFacing = TRUE, cex = 1.2, col = "black", sector.index = si, track.index = 1)
+} 
+dev.off()
+circos.clear()
+
+
+write.csv(phylum.df, "output/cyano_control.csv")
+
+
+```
+
+# HUB detection
+
+```{r}
+
+ig <-make_network(physeq.prune, "taxa", max.dist=0.4)
+
+# Identify isolated nodes
+bad.vs<-V(ig)[degree(ig) == 0] 
+# Remove isolated nodes
+net.grph<-delete.vertices(ig, bad.vs)
+
+# Hub detection
+net.cn <- closeness(ig)
+net.bn <- betweenness(ig) 
+net.pr <- page_rank(ig)$vector 
+net.hs <- hub_score(ig)$vector
+net.dg <- degree(ig)
+hubs <- data.frame(hub_score(ig)$vector); colnames(hubs) <- c("hubscore")
+
+# Extract abundance matrix from the phyloseq object
+TAX_TABLE = as(tax_table(physeq.prune), "matrix")
+TAX_TABLE <- as.data.frame(TAX_TABLE)
+
+hubs$otu <- rownames(hubs)
+test <- merge(TAX_TABLE, hubs, by.x = "otu", all.x = TRUE)
+
+TAX_TABLE <- TAX_TABLE %>% filter(!(otu %in% c(113, 214)))
+
+hubs <- cbind(hubs, TAX_TABLE)
+hubs$betweeness <- net.bn
+hubs$pr <- net.pr
+hubs$degree <- net.dg
+hubs$closness <- net.cn
+arrange(hubs, -hubscore)
+```
+
+```{r}
+library(tidyr)
+mean.rel.abund <- taxon500 %>% 
+  group_by(genus) %>% 
+  nest() %>%
+  mutate(mean.relabund = purrr::map(data,~mean(.$sum*100))) %>%
+  mutate(SE.relabund = purrr::map(data,~sd(.$sum*100)/sqrt(length(.$sum*100)))) %>%
+  unnest(mean.relabund, SE.relabund)
+
+nodes.stats <- hubs
+nodes.stats$mean.abundance <- mean.rel.abund$mean.relabund[match(nodes.stats$genus, mean.rel.abund$genus)]
+nodes.stats$Label <- match(nodes.stats$genus, taxon500$genus)
+nodes.stats$order <- taxon500$order[match(nodes.stats$order, taxon500$order)]
+nodes.stats$phylum <- taxon500$phylum[match(nodes.stats$order, taxon500$order)]
+nodes.stats$domain <- taxon500$domain[match(nodes.stats$order, taxon500$order)]
+mean.close <- mean(log10(nodes.stats$closness))
+sd.close <- sd(log10(nodes.stats$closness))
+hubline.close <- (mean.close + 1.65*sd.close)
+z.score.close = (hubline.close - mean.close)/sd.close
+pnorm(z.score.close) # line is above 90 % - equal to p = 0.1
+hist(log10(nodes.stats$degree))
+mean.degree <- mean(log10(nodes.stats$degree))
+sd.degree <- sd(log10(nodes.stats$degree))
+hubline.degree <- (mean.degree + 1.65*sd.degree)
+z.score.degree = (hubline.degree - mean.degree)/sd.degree
+pnorm(z.score.degree) # line is above 90 % - equal to p = 0.1
+mean.between <- mean(log10(nodes.stats$betweeness[nodes.stats$betweeness > 0]))
+sd.between <- sd(log10(nodes.stats$betweeness[nodes.stats$betweeness > 0]))
+hubline.between <- (mean.between + 1.65*sd.between)
+z.score.between = (hubline.between - mean.between)/sd.between
+pnorm(z.score.between) # line is above 90 % - equal to p = 0.1
+```
+
+```{r}
+nodes.stats
+nodes.stats <- nodes.stats[-c(8)] # remove duplicate column name 
+```
+
+```{r}
+library(ggrepel)
+close <- ggplot() + 
+  geom_point(data = nodes.stats, aes(size = mean.abundance, x = closness, y = degree), alpha = 0.6) +
+  scale_size_continuous(name = "Relative Abundance") +
+  theme_bw() + 
+  geom_text_repel(data = subset(nodes.stats, closness > 10^hubline.close & degree > 10^hubline.degree), aes(x = closness, y = degree, label = Label)) +
+  xlab("Closeness Centrality") + 
+  ylab("Degree") + 
+  geom_vline(xintercept = 10^hubline.close, linetype = 2) + 
+  geom_hline(yintercept = 10^hubline.degree, linetype = 2)
+cbbPalette <- c("#E69F00", "#999999", "#0072B2", "#56B4E9", "#F0E442", "lavenderblush2", "#CC79A7", "#009E73", "midnightblue", "lightgreen", "aquamarine4","#D55E00","brown", "snow3", "black", "lightgray")
+between <- ggplot() + 
+  geom_point(data = nodes.stats, aes(y = betweeness, x = degree, color = phylum, shape = domain), alpha = 0.7) + geom_jitter() + scale_color_manual( c("cadetblue", "darkolivegreen3", "darkslateblue", "lightcoral", "mediumpurple1", "salmon1", "tomato", "goldenrod", "darkslategray","darkgray", "indianred3", "lightskyblue3", "plum4"))+
+  theme_bw() + 
+  scale_color_manual(values = cbbPalette) +
+  geom_text_repel(data = subset(nodes.stats, betweeness > 4^hubline.between & degree > 4^hubline.degree), aes(y = betweeness, x = degree, label = genus), size =2, max.overlaps = 10) +
+  ylab("Betweeness Centrality") + 
+  xlab("Node Degree")
+   #+
+  #geom_hline(yintercept = 10^hubline.between, linetype = 2) + 
+  #geom_vline(xintercept = 10^hubline.degree, linetype = 2)
+```
+
+```{r}
+library(scales)
+```
+
+```{r}
+pdf("figures/betweenness_control.pdf")
+between + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) + 
+  annotation_logticks(sides="l")
+dev.off()
+```
+
+#### Network Analysis for Burned Samples 
+
+```{r}
+meta <- SCIBiocrust::metadata
+meta <- meta[c(1,2,3,5)]
+meta$fire.type <- c("rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "wild", "wild", "wild", "wild", "cont12", "cont12", "cont12", "cont12")
+
+meta <- meta %>% filter(fire.type == "rx")
+
+sampleData <- sample_data(meta)
+
+sample_names(sampleData) <- c("bsc1", "bsc2", "bsc3", "bsc4", "bsc9", "bsc10", "bsc11", "bsc12")
+```
+
+###Import otu table
+```{r}
+taxon <- SCIBiocrust::all.taxa
+colnames(taxon) <- c("domain", "phylum","class", "order", "family", "genus", "otu", "bsc1", "bsc2", "bsc3", "bsc4", "bsc5", "bsc6", "bsc7", "bsc8", "bsc9", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24", "sum")
+
+taxon <- taxon[c(1:11, 16:19)] # keep only burned samples
+taxon$sum <- rowSums(taxon[,c(8:15)])
+
+taxon$sum <- as.vector(taxon$sum)
+taxon[with(taxon, order("sum"))]
+# use only the top 500 most abundant 
+
+taxon500 <- taxon
+#taxon <- taxon %>% filter(domain != "Eukaryota")
+otu_table <- taxon500 %>%  dplyr::select(otu, bsc1:bsc12)
+
+otu_table <- aggregate(. ~ otu, transform(otu_table, otu = otu), sum)
+otu_table[is.na(otu_table)] <- 0
+rownames(otu_table) <- otu_table$otu
+otu <- rownames(otu_table)
+otu_table <- otu_table[-1]
+otumat <- as(as.matrix(otu_table), "matrix")
+#otumat$sample_names <- c("sa1","sa2","sa3","sa4","sa5","sa6","sa7","sa8","sa9","sa10","sa11","sa12","sa13","sa14","sa15","sa16","sa17","sa18","sa19" ,"sa20" ,"sa21" ,"sa22" ,"sa23" ,"sa24")
+OTU = otu_table(otumat, taxa_are_rows = TRUE)
+```
+
+###Import taxonomy table
+```{r}
+taxonomy_table <- taxon500[c(1:7)]
+taxonomy_table <- taxonomy_table[-5]
+taxmat <- as(as.matrix(taxonomy_table),"matrix")
+rownames(taxmat) <- otu
+
+TAX = tax_table(taxmat)
+```
+
+###Construct phyloseq object
+```{r}
+physeq = phyloseq(OTU,TAX,sampleData)
+```
+
+```{r}
+physeq
+```
+
+```{r}
+plot_bar(physeq, fill = "phylum")
+
+```
+###STEP9: Remove singletons
+Remove any OTUs that have a relative abundance less than 1%
+
+```{r}
+physeq.prune = prune_taxa(taxa_sums(physeq) > 0.01, physeq)
+```
+
+```{r}
+physeq.prune
+```
+
+###STEP10: Plot read counts to check dataset
+Check read counts: any samples that have very low reads should be removed.
+[Ref](http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html)
+
+```{r}
+readcount = data.table(as(sample_data(physeq.prune), "data.frame"),
+                 TotalReads = sample_sums(physeq.prune), 
+                 keep.rownames = TRUE)
+setnames(readcount, "rn", "SampleID")
+#For plotting, use command below.
+SeqDepth = ggplot(readcount, aes(TotalReads)) + geom_histogram() + ggtitle("Sequencing Depth")
+SeqDepth
+```
+TotalReads of all the samples can be in this table (select only SampleID and TotalReads columns).
+In order to check samples with low number of reads, "order()" can be used to sort "TotalReads" column.
+In this dataset, N55.Rhizo has very low number of reads, so will will filter this sample out using the next minimum number of reads.
+```{r}
+readcount = readcount[order(readcount$TotalReads), c("SampleID", "TotalReads")]
+```
+
+```{r}
+head(readcount)
+```
+
+####Transform data to presence/absence
+```{r}
+transform.physeq.prune = transform_sample_counts(physeq.prune, function(abund) 1*(abund>0))
+```
+
+```{r}
+transform.physeq.prune
+```
+agglomerate at Phylum level
+
+```{r}
+ps.taxglom = tax_glom(transform.physeq.prune, taxrank="order")
+```
+
+```{r}
+ps.taxglom
+```
+check tax table after agglomeration
+
+```{r}
+head(tax_table(ps.taxglom))
+```
+
+```{r}
+ig <-make_network(physeq.prune, "taxa", max.dist=0.4)
+pdf("figures/prescribed_burn_network.pdf")
+burn.netowrk <- plot_network(ig, physeq.prune, type = "taxa", color = "phylum", shape = "domain", label = NA, point_size = 2)+ theme(text=element_text(size=15))
+burn.netowrk
+dev.off()
+```
+
+
+###STEP14:Plot network (Phyloseq)
+
+```{r warning=FALSE}
+#ps.taxglom.prune = prune_taxa(names(sort(taxa_sums(ps.taxglom), TRUE))[1:10], ps.taxglom)
+pdf("figures/network analysis.order.burn.pdf")
+set.seed(200)
+psplotnet = plot_net(physeq.prune, distance = "bray", type = "taxa", laymeth = "circle", color = "phylum", point_label = "phylum", shape = "domain" ,hjust = 0.3, maxdist = 0.7) + ggtitle("Biocrust Microbial Community Network Analysis")  + theme(plot.title = element_text(hjust = 0.5))+
+    theme(legend.position="bottom")
+psplotnet
+dev.off()
+```
+
+###STEP15:Add data table from plot network to "df" variable
+
+```{r}
+df = psplotnet$data
+```
+
+```{r}
+df.v1 = data.frame(OTU1 = df$v1, stringsAsFactors = T )
+```
+
+```{r}
+df.v2 = data.frame(OTU1 = df$v2, stringsAsFactors = T )
+```
+
+```{r}
+df.v1.v2 = rbind(df.v1,df.v2)
+```
+
+```{r}
+df.v1.v2
+```
+
+```{r}
+tax.circlize <- taxon500
+#tax_filtered <- tax.circlize[tax.circlize$OTU.ID %in% df.v1.v2$OTU1,]
+#tax_filtered
+```
+
+```{r}
+tax.circlize
+```
+
+construct data.frame by assigning "v1" to OTU1, "v2" to OTU2, and "Distance" to Similarity (using 1-dissimilarity (1-df$Distance))
+
+```{r}
+cdf = data.frame(OTU1 = df$v1, OTU2 = df$v2, Similarity = as.vector(1-df$Distance), stringsAsFactors = TRUE )
+```
+
+```{r}
+cdf
+```
+
+```{r}
+cdf.w.tax = data.frame(OTU1=tax.circlize[match(cdf$OTU1, tax.circlize$otu), 6], OTU2=tax.circlize[match(cdf$OTU2, tax.circlize$otu), 6],OTU1_phylum= tax.circlize[match(cdf$OTU1, tax.circlize$otu), 2], OTU2_phylum= tax.circlize[match(cdf$OTU2, tax.circlize$otu), 2], Similarity=cdf$Similarity)
+```
+
+```{r}
+cdf.w.tax
+```
+
+
+###STEP16:Plot network using circlize package
+
+clear any object that might be drawn by circlize before.
+
+```{r}
+circos.clear()
+```
+
+Plot network from "cdf" data frame that was constructed from Phyloseq plot network
+
+link.visible: plot any of the collumn#3 that similarity is greater than certain number in this case 0.8.
+for (si in get.all.setor.index()) is used to re-label OTUs name, so they are not on top of each others. (You can try plotting without for (si in get.all.setor.index()) to see how it would look )
+
+```{r}
+chordDiagram(cdf.w.tax[3:5], annotationTrack = "grid", annotationTrackHeight = 0.01, preAllocateTracks = 1, link.visible = cdf.w.tax[[3]] > 0.75) 
+for(si in get.all.sector.index()) {
+    xlim = get.cell.meta.data("xlim", sector.index = si, track.index = 1)
+    ylim = get.cell.meta.data("ylim", sector.index = si, track.index = 1)
+    circos.text(mean(xlim), ylim[1], si, facing = "clockwise", adj = c(-0.1, -0.2),
+    niceFacing = TRUE, cex = 1.2, col = "black", sector.index = si, track.index = 1)
+} 
+circos.clear()
+
+```
+
+
+```{r}
+pdf("figures/Biocrust Microbial Community Network Analysis remove below 1 percent_genus_burn.pdf", width = 18, height = 18)
+chordDiagram(cdf.w.tax[3:5], annotationTrack = "grid", annotationTrackHeight = 0.01, preAllocateTracks = 1, link.visible = cdf.w.tax[[3]] > 0.75, grid.col = c("cadetblue", "darkolivegreen3", "darkslateblue", "lightcoral", "mediumpurple1", "salmon1", "tomato", "goldenrod", "darkslategray", "indianred3", "lightskyblue3", "plum4"))
+for(si in get.all.sector.index()) {
+    xlim = get.cell.meta.data("xlim", sector.index = si, track.index = 1)
+    ylim = get.cell.meta.data("ylim", sector.index = si, track.index = 1)
+    circos.text(mean(xlim), ylim[1], si, facing = "clockwise", adj = c(-0.1, -0.2),
+    niceFacing = TRUE, cex = 1.2, col = "black", sector.index = si, track.index = 1)
+} 
+circos.clear()
+dev.off()
+
+write.csv(cdf.w.tax, "output/cdf_burn.csv")
+```
+
+```{r}
+cyano <- cdf.w.tax %>% filter(OTU1_phylum == "Cyanobacteria" | OTU2_phylum == "Cyanobacteria")
+
+OTU1 <- cyano$OTU1_phylum
+
+phylum.df <- as.data.frame(OTU1)
+phylum.df$OTU2 <- cyano$OTU2_phylum
+phylum.df$Similarity <- cyano$Similarity
+
+circos.clear()
+```
+
+```{r}
+
+circos.clear()
+pdf("figures/cyano_network_burn.pdf",  width = 18, height = 18)
+cyano.network.burn <- chordDiagram(phylum.df, annotationTrack = "grid", annotationTrackHeight = 0.01, preAllocateTracks = 1, link.visible = phylum.df[3] > 0.75, grid.col = c("cadetblue", "darkolivegreen3", "darkslateblue", "lightcoral", "mediumpurple1", "salmon1", "tomato", "goldenrod", "darkslategray","darkgray", "indianred3", "lightskyblue3"))
+for(si in get.all.sector.index()) {
+    xlim = get.cell.meta.data("xlim", sector.index = si, track.index = 1)
+    ylim = get.cell.meta.data("ylim", sector.index = si, track.index = 1)
+    circos.text(mean(xlim), ylim[1], si, facing = "clockwise", adj = c(-0.1, -0.2),
+    niceFacing = TRUE, cex = 1.2, col = "black", sector.index = si, track.index = 1)
+} 
+dev.off()
+
+write.csv(phylum.df, "output/cyano_burn.csv")
+
+```
+
+```{r}
+(control.network + burn.netowrk)/(control.cyano.network + cyano.network.burn)
+
+```
+
+# HUB detection
+
+
+```{r}
+
+ig <-make_network(physeq.prune, "taxa", max.dist=0.4)
+
+# Identify isolated nodes
+bad.vs<-V(ig)[degree(ig) == 0] 
+# Remove isolated nodes
+net.grph<-delete.vertices(ig, bad.vs)
+
+# Hub detection
+net.cn <- closeness(ig)
+net.bn <- betweenness(ig) 
+net.pr <- page_rank(ig)$vector 
+net.hs <- hub_score(ig)$vector
+net.dg <- degree(ig)
+hubs <- data.frame(hub_score(ig)$vector); colnames(hubs) <- c("hubscore")
+
+# Extract abundance matrix from the phyloseq object
+TAX_TABLE = as(tax_table(physeq.prune), "matrix")
+TAX_TABLE <- as.data.frame(TAX_TABLE)
+TAX_TABLE <- TAX_TABLE %>% filter(!(otu %in% c(113, 197, 215, 219)))
+TAX_TABLE <- TAX_TABLE[-71,] # for some reason it wasnt removing otu 214, had to remove OTUs that didn't match hubs df for some reason
+hubs$otu <- rownames(hubs)
+test <- merge(TAX_TABLE, hubs, by.x = "otu", all.x = TRUE)
+hubs <- cbind(hubs, TAX_TABLE)
+hubs$betweeness <- net.bn
+hubs$pr <- net.pr
+hubs$degree <- net.dg
+hubs$closness <- net.cn
+arrange(hubs, -hubscore)
+```
+
+```{r}
+library(tidyr)
+mean.rel.abund <- taxon500 %>% 
+  group_by(genus) %>% 
+  nest() %>%
+  mutate(mean.relabund = purrr::map(data,~mean(.$sum*100))) %>%
+  mutate(SE.relabund = purrr::map(data,~sd(.$sum*100)/sqrt(length(.$sum*100)))) %>%
+  unnest(mean.relabund, SE.relabund)
+
+nodes.stats <- hubs
+nodes.stats$mean.abundance <- mean.rel.abund$mean.relabund[match(nodes.stats$genus, mean.rel.abund$genus)]
+nodes.stats$Label <- match(nodes.stats$genus, taxon500$genus)
+nodes.stats$order <- taxon500$order[match(nodes.stats$order, taxon500$order)]
+nodes.stats$phylum <- taxon500$phylum[match(nodes.stats$order, taxon500$order)]
+nodes.stats$domain <- taxon500$domain[match(nodes.stats$order, taxon500$order)]
+mean.close <- mean(log10(nodes.stats$closness))
+sd.close <- sd(log10(nodes.stats$closness))
+hubline.close <- (mean.close + 1.65*sd.close)
+z.score.close = (hubline.close - mean.close)/sd.close
+pnorm(z.score.close) # line is above 90 % - equal to p = 0.1
+hist(log10(nodes.stats$degree))
+mean.degree <- mean(log10(nodes.stats$degree))
+sd.degree <- sd(log10(nodes.stats$degree))
+hubline.degree <- (mean.degree + 1.65*sd.degree)
+z.score.degree = (hubline.degree - mean.degree)/sd.degree
+pnorm(z.score.degree) # line is above 90 % - equal to p = 0.1
+mean.between <- mean(log10(nodes.stats$betweeness[nodes.stats$betweeness > 0]))
+sd.between <- sd(log10(nodes.stats$betweeness[nodes.stats$betweeness > 0]))
+hubline.between <- (mean.between + 1.65*sd.between)
+z.score.between = (hubline.between - mean.between)/sd.between
+pnorm(z.score.between) # line is above 90 % - equal to p = 0.1
+```
+
+```{r}
+nodes.stats
+nodes.stats <- nodes.stats[-c(8)] # remove duplicate column name 
+```
+
+```{r}
+library(ggrepel)
+close <- ggplot() + 
+  geom_point(data = nodes.stats, aes(size = mean.abundance, x = closness, y = degree), alpha = 0.6) +
+  scale_size_continuous(name = "Relative Abundance") +
+  theme_bw() + 
+  geom_text_repel(data = subset(nodes.stats, closness > 10^hubline.close & degree > 10^hubline.degree), aes(x = closness, y = degree, label = Label)) +
+  xlab("Closeness Centrality") + 
+  ylab("Degree") + 
+  geom_vline(xintercept = 10^hubline.close, linetype = 2) + 
+  geom_hline(yintercept = 10^hubline.degree, linetype = 2)
+cbbPalette <- c("#E69F00", "#999999", "#0072B2", "#56B4E9", "#F0E442", "lavenderblush2", "#CC79A7", "#009E73", "midnightblue", "lightgreen", "aquamarine4","#D55E00","brown", "snow3", "black", "lightgray")
+between <- ggplot() + 
+  geom_point(data = nodes.stats, aes(y = betweeness, x = degree, color = phylum, shape = domain), alpha = 0.7) + geom_jitter() + scale_color_manual(c("cadetblue", "darkolivegreen3", "darkslateblue", "lightcoral", "mediumpurple1", "salmon1", "tomato", "goldenrod", "darkslategray", "indianred3", "lightskyblue3", "plum4"))+
+  theme_bw() + 
+  scale_color_manual(values = cbbPalette) +
+  geom_text_repel(data = subset(nodes.stats, betweeness > 4^hubline.between & degree > 4^hubline.degree), aes(y = betweeness, x = degree, label = genus), size =2, max.overlaps = 10) +
+  ylab("Betweeness Centrality") + 
+  xlab("Node Degree")
+   #+
+  #geom_hline(yintercept = 10^hubline.between, linetype = 2) + 
+  #geom_vline(xintercept = 10^hubline.degree, linetype = 2)
+```
+
+```{r}
+library(scales)
+```
+
+```{r}
+pdf("figures/betweenness_burn.pdf")
+between + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) + 
+  annotation_logticks(sides="l")
+dev.off()
+```
+
+```{r}
+#determine network satbility using Spieceasi
+pargs <- list(rep.num = 50, seed = 10010, ncores = 1)
+
+nw <- spiec.easi(physeq.prune, method='glasso', nlambda=40,
+              lambda.min.ratio=1e-2, pulsar.params = pargs)
+```
+
+# do the same thing for just the wildfire 
+```{r}
+meta <- SCIBiocrust::metadata
+meta <- meta[c(1,2,3,5)]
+meta$fire.type <- c("rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "wild", "wild", "wild", "wild", "cont12", "cont12", "cont12", "cont12")
+
+meta <- meta %>% filter(fire.type == "wild")
+
+sampleData <- sample_data(meta)
+
+sample_names(sampleData) <- c("bsc17", "bsc18", "bsc19", "bsc20")
+```
+
+###Import otu table
+```{r}
+taxon <- SCIBiocrust::all.taxa
+colnames(taxon) <- c("domain", "phylum","class", "order", "family", "genus", "otu", "bsc1", "bsc2", "bsc3", "bsc4", "bsc5", "bsc6", "bsc7", "bsc8", "bsc9", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24", "sum")
+
+taxon <- taxon[c(1:7, 24:27)] # keep only burned samples
+taxon$sum <- rowSums(taxon[,c(8:11)])
+
+taxon$sum <- as.vector(taxon$sum)
+taxon[with(taxon, order("sum"))]
+# use only the top 500 most abundant 
+
+taxon500 <- taxon
+#taxon <- taxon %>% filter(domain != "Eukaryota")
+otu_table <- taxon500 %>%  dplyr::select(otu, bsc17:bsc20)
+
+otu_table <- aggregate(. ~ otu, transform(otu_table, otu = otu), sum)
+otu_table[is.na(otu_table)] <- 0
+rownames(otu_table) <- otu_table$otu
+otu <- rownames(otu_table)
+otu_table <- otu_table[-1]
+otumat <- as(as.matrix(otu_table), "matrix")
+#otumat$sample_names <- c("sa1","sa2","sa3","sa4","sa5","sa6","sa7","sa8","sa9","sa10","sa11","sa12","sa13","sa14","sa15","sa16","sa17","sa18","sa19" ,"sa20" ,"sa21" ,"sa22" ,"sa23" ,"sa24")
+OTU = otu_table(otumat, taxa_are_rows = TRUE)
+```
+
+###Import taxonomy table
+```{r}
+taxonomy_table <- taxon500[c(1:7)]
+taxonomy_table <- taxonomy_table[-7]
+taxmat <- as(as.matrix(taxonomy_table),"matrix")
+rownames(taxmat) <- otu
+
+TAX = tax_table(taxmat)
+```
+
+###Construct phyloseq object
+```{r}
+physeq = phyloseq(OTU,TAX,sampleData)
+```
+
+```{r}
+physeq
+```
+
+```{r}
+plot_bar(physeq, fill = "phylum")
+
+```
+###STEP9: Remove singletons
+Remove any OTUs that have a relative abundance less than 1%
+
+```{r}
+physeq.prune = prune_taxa(taxa_sums(physeq) > 0.01, physeq)
+```
+
+```{r}
+physeq.prune
+```
+
+###STEP10: Plot read counts to check dataset
+Check read counts: any samples that have very low reads should be removed.
+[Ref](http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html)
+
+```{r}
+readcount = data.table(as(sample_data(physeq.prune), "data.frame"),
+                 TotalReads = sample_sums(physeq.prune), 
+                 keep.rownames = TRUE)
+setnames(readcount, "rn", "SampleID")
+#For plotting, use command below.
+SeqDepth = ggplot(readcount, aes(TotalReads)) + geom_histogram() + ggtitle("Sequencing Depth")
+SeqDepth
+```
+TotalReads of all the samples can be in this table (select only SampleID and TotalReads columns).
+In order to check samples with low number of reads, "order()" can be used to sort "TotalReads" column.
+In this dataset, N55.Rhizo has very low number of reads, so will will filter this sample out using the next minimum number of reads.
+```{r}
+readcount = readcount[order(readcount$TotalReads), c("SampleID", "TotalReads")]
+```
+
+```{r}
+head(readcount)
+```
+
+####Transform data to presence/absence
+```{r}
+transform.physeq.prune = transform_sample_counts(physeq.prune, function(abund) 1*(abund>0))
+```
+
+```{r}
+transform.physeq.prune
+```
+agglomerate at Phylum level
+
+```{r}
+ps.taxglom = tax_glom(transform.physeq.prune, taxrank="order")
+```
+
+```{r}
+ps.taxglom
+```
+check tax table after agglomeration
+
+```{r}
+head(tax_table(ps.taxglom))
+```
+
+```{r}
+ig <-make_network(physeq.prune, "taxa", max.dist=0.4)
+pdf("figures/wildfire_burn_network.pdf")
+burn.netowrk <- plot_network(ig, physeq.prune, type = "taxa", color = "phylum", shape = "domain", label = NA, point_size = 2)+ theme(text=element_text(size=15))
+burn.netowrk
+dev.off()
+```
+
+```{r}
+meta <- SCIBiocrust::metadata
+meta <- meta[c(1,2,3,5)]
+meta$fire.type <- c("rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "rx", "rx", "rx", "rx", "cont17", "cont17", "cont17", "cont17", "wild", "wild", "wild", "wild", "cont12", "cont12", "cont12", "cont12")
+
+meta <- meta %>% filter(fire.type == "cont12")
+
+sampleData <- sample_data(meta)
+
+sample_names(sampleData) <- c("bsc21", "bsc22", "bsc23", "bsc24")
+```
+
+###Import otu table
+```{r}
+taxon <- SCIBiocrust::all.taxa
+
+colnames(taxon) <- c("domain", "phylum","class", "order", "family", "genus", "otu", "bsc1", "bsc2", "bsc3", "bsc4", "bsc5", "bsc6", "bsc7", "bsc8", "bsc9", "bsc10", "bsc11", "bsc12", "bsc13", "bsc14", "bsc15", "bsc16", "bsc17", "bsc18", "bsc19", "bsc20", "bsc21", "bsc22", "bsc23", "bsc24", "sum")
+
+taxon <- taxon[c(1:7, 28:31)] # keep only burned samples
+taxon$sum <- rowSums(taxon[,c(8:11)])
+
+taxon$sum <- as.vector(taxon$sum)
+taxon[with(taxon, order("sum"))]
+# use only the top 500 most abundant 
+
+taxon500 <- taxon
+#taxon <- taxon %>% filter(domain != "Eukaryota")
+otu_table <- taxon500 %>%  dplyr::select(otu, bsc21:bsc24)
+
+otu_table <- aggregate(. ~ otu, transform(otu_table, otu = otu), sum)
+otu_table[is.na(otu_table)] <- 0
+rownames(otu_table) <- otu_table$otu
+otu <- rownames(otu_table)
+otu_table <- otu_table[-1]
+otumat <- as(as.matrix(otu_table), "matrix")
+#otumat$sample_names <- c("sa1","sa2","sa3","sa4","sa5","sa6","sa7","sa8","sa9","sa10","sa11","sa12","sa13","sa14","sa15","sa16","sa17","sa18","sa19" ,"sa20" ,"sa21" ,"sa22" ,"sa23" ,"sa24")
+OTU = otu_table(otumat, taxa_are_rows = TRUE)
+```
+
+###Import taxonomy table
+```{r}
+taxonomy_table <- taxon500[c(1:7)]
+taxonomy_table <- taxonomy_table[-7]
+taxmat <- as(as.matrix(taxonomy_table),"matrix")
+rownames(taxmat) <- otu
+
+TAX = tax_table(taxmat)
+```
+
+###Construct phyloseq object
+```{r}
+physeq = phyloseq(OTU,TAX,sampleData)
+```
+
+```{r}
+physeq
+```
+
+```{r}
+plot_bar(physeq, fill = "phylum")
+
+```
+###STEP9: Remove singletons
+Remove any OTUs that have a relative abundance less than 1%
+
+```{r}
+physeq.prune = prune_taxa(taxa_sums(physeq) > 0.01, physeq)
+```
+
+```{r}
+physeq.prune
+```
+
+###STEP10: Plot read counts to check dataset
+Check read counts: any samples that have very low reads should be removed.
+[Ref](http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html)
+
+```{r}
+readcount = data.table(as(sample_data(physeq.prune), "data.frame"),
+                 TotalReads = sample_sums(physeq.prune), 
+                 keep.rownames = TRUE)
+setnames(readcount, "rn", "SampleID")
+#For plotting, use command below.
+SeqDepth = ggplot(readcount, aes(TotalReads)) + geom_histogram() + ggtitle("Sequencing Depth")
+SeqDepth
+```
+TotalReads of all the samples can be in this table (select only SampleID and TotalReads columns).
+In order to check samples with low number of reads, "order()" can be used to sort "TotalReads" column.
+In this dataset, N55.Rhizo has very low number of reads, so will will filter this sample out using the next minimum number of reads.
+```{r}
+readcount = readcount[order(readcount$TotalReads), c("SampleID", "TotalReads")]
+```
+
+```{r}
+head(readcount)
+```
+
+####Transform data to presence/absence
+```{r}
+transform.physeq.prune = transform_sample_counts(physeq.prune, function(abund) 1*(abund>0))
+```
+
+```{r}
+transform.physeq.prune
+```
+agglomerate at Phylum level
+
+```{r}
+ps.taxglom = tax_glom(transform.physeq.prune, taxrank="order")
+```
+
+```{r}
+ps.taxglom
+```
+check tax table after agglomeration
+
+```{r}
+head(tax_table(ps.taxglom))
+```
+
+```{r}
+ig <-make_network(physeq.prune, "taxa", max.dist=0.4)
+pdf("figures/control12_network.pdf")
+burn.netowrk <- plot_network(ig, physeq.prune, type = "taxa", color = "phylum", shape = "domain", label = NA, point_size = 2)+ theme(text=element_text(size=15))
+burn.netowrk
+dev.off()
+```
+
