@@ -121,12 +121,21 @@ pairwise.adonis(genus.dist, md$Fire.Type)
 ```
 
 ```{r}
-taxaNMDSRevised <- ggplot(NMDS, aes(x = MDS1, y = MDS2, col = Fire.Type)) + geom_point() + 
+taxaNMDSRevisedWild <- ggplot(NMDS %>% filter(Fire.Type %in% c("control2012", "wildfire")), aes(x = MDS1, y = MDS2, col = Fire.Type)) + geom_point(size = 5) + 
   stat_ellipse(size = 3) + theme_bw() + theme(text=element_text(size=30))  + theme(legend.position = "bottom") +
-    scale_color_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon"))+ annotate("text", x=0.6, y=0.7, label= "R2 = 0.14", size = 10) + annotate("text", x=0.6, y=0.63, label= "P = 0.334", size = 10) + annotate("text", x=0.6, y=0.58, label= "stress = 0.096", size = 10) + theme(text=element_text(size=30)) 
+    scale_color_manual(values = c( "forestgreen","salmon"))
 
-pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/San-Clemente-Biocrust-/figures/taxaNMDSRevised.pdf", height = 12, width = 12)
-taxaNMDSRevised 
+taxaNMDSRevisedRX <- ggplot(NMDS %>% filter(Fire.Type %in% c("control2017", "prescribed")), aes(x = MDS1, y = MDS2, col = Fire.Type)) + geom_point(size = 5) + 
+  stat_ellipse(size = 3) + theme_bw() + theme(text=element_text(size=30))  + theme(legend.position = "bottom") +
+    scale_color_manual(values = c("dodgerblue4","gold"))
+
+#include in caption r2 = 0.14. p=0.334, stress = 0.096
+
+taxaNMDSRevisedRX
+
+library(patchwork)
+pdf("C:/Users/Brianne/OneDrive - San Diego State University (SDSU.EDU)/San-Clemente-Biocrust-/figures/taxaNMDSRevised.pdf", height = 12, width = 20)
+taxaNMDSRevisedRX + taxaNMDSRevisedWild 
 dev.off()
 ```
 
@@ -167,7 +176,7 @@ pdf("sigtaxa.pdf", height = 12, width = 8)
 ggplot(data = sub_df, aes(x = name, y = value, fill = Fire.Type))+ 
   geom_bar(stat = "identity", position = "dodge") + 
   theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
-  scale_fill_manual(values = c("dodgerblue4", "forestgreen","gold", "salmon"))  + 
+  scale_fill_manual(values = c("forestgreen", "dodgerblue4", "gold", "salmon"))  + 
   theme(legend.position = "bottom") + labs(x = "Genus", y = "Relative Abundance") + facet_grid(.~Site) +
   coord_flip()
 dev.off()
@@ -179,6 +188,7 @@ pdf("taxa2017.pdf")
 ggplot(data = sub_df %>% filter(Fire.Type %in% c("control2017", "prescribed")) %>% filter(!(name %in% c("Ferroplasma", "Monosiga", "Carnobacterium", "Shuttleworthia", "Halorhabdus", "Aliivibrio"))), aes(x = name, y = value, fill = Fire.Type)) + geom_bar(stat = "identity", position = "dodge") + theme_bw() + theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) + scale_fill_manual(values = c("dodgerblue4", "gold" ))  + theme(legend.position = "bottom") + labs(x = "Genus", y = "Relative Abundance") + coord_flip()
 dev.off()
 ```
+
 ```{r}
 pdf("taxa2012.pdf")
 ggplot(data = sub_df %>% filter(Fire.Type %in% c("control2012", "wildfire")) %>% filter(!(name %in% c("Ferroplasma", "Monosiga", "Carnobacterium", "Shuttleworthia", "Halorhabdus", "Aliivibrio"))), aes(x = name, y = value, fill = Fire.Type)) + geom_bar(stat = "identity", position = "dodge") + theme_bw() + theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) + scale_fill_manual(values = c("forestgreen", "salmon" ))  + theme(legend.position = "bottom") + labs(x = "Genus", y = "Relative Abundance")+ coord_flip()
@@ -453,22 +463,27 @@ TukeyHSD(div.aov)
 ```
 
 ```{r}
-richness.plot <- ggplot(data = rich.div, aes(x = FireType, y = richness, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon")) + theme(text=element_text(size=30)) + labs(y = "# of Genera") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+richness.plotRX <- ggplot(data = rich.div %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = richness, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("dodgerblue4", "gold")) + theme(text=element_text(size=30)) + labs(y = "# of Genera") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +ylim(700,850)
+
+richness.plotWild <- ggplot(data = rich.div %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = richness, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("forestgreen", "salmon")) + theme(text=element_text(size=30)) + labs(y = "# of Genera") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + ylim(700,850)
+
 ```
 
 ```{r}
 pdf("figures/richness.pdf")
-richness.plot
+richness.plotRX + richness.plotWild
 dev.off()
 ```
 
 ```{r}
-diversity.plot <- ggplot(data = rich.div, aes(x = FireType, y = diversity, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon")) + theme(text=element_text(size=30)) + labs(y = "Shannon-Weiner Index") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+diversity.plotRX <- ggplot(data = rich.div %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = diversity, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("dodgerblue4", "gold")) + theme(text=element_text(size=30)) + labs(y = "Shannon-Weiner Index") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+ ylim(4.5,5.5)
+
+diversity.plotWild <- ggplot(data = rich.div %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = diversity, fill = FireType)) + geom_boxplot() + theme_bw() + theme(legend.position = "none") + scale_fill_manual(values = c("forestgreen", "salmon")) + theme(text=element_text(size=30)) + labs(y = "Shannon-Weiner Index") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + ylim(4.5,5.5)
 ```
 
 ```{r}
 pdf("figures/diversity.pdf")
-diversity.plot
+diversity.plotRX + diversity.plotWild
 dev.off()
 ```
 
@@ -526,20 +541,25 @@ summary(glht(nfix.mod, linfct = mcp(FireType = "Tukey")))
 ```
 
 ```{r}
-chlplot <- ggplot(data = chl, aes(x = FireType, y = chl_total_mg_per_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon")) + xlab("Fire Type") + ylab("Total Chlorophyll (mg/g)") + theme(legend.position = "none") + theme(text=element_text(size=20))+ labs(x = "Fire Type")
+chlplotRX <- ggplot(data = chl %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = chl_total_mg_per_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "gold")) + xlab("Fire Type") + ylab("Total Chlorophyll (mg/g)") + theme(legend.position = "none") + theme(text=element_text(size=20))+ labs(x = "Fire Type")+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
-chlplot
+chlplotWild <- ggplot(data = chl %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = chl_total_mg_per_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c( "forestgreen", "salmon")) + xlab("Fire Type") + ylab("Total Chlorophyll (mg/g)") + theme(legend.position = "none") + theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+
 ```
 
 ```{r}
-eps.plot <- ggplot(data = eps, aes(x = FireType, y = Conc_mg_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen", "gold", "salmon")) + xlab("Fire Type") + ylab("Total EPS (mg/g)") + theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")
-eps.plot
+eps.plotRX <- ggplot(data = eps %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = Conc_mg_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "gold")) + xlab("Fire Type") + ylab("Total EPS (mg/g)") + theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+eps.plotWild <- ggplot(data = eps %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = Conc_mg_g, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("forestgreen", "salmon")) + xlab("Fire Type") + ylab("Total EPS (mg/g)") + theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
 ```
 
 ```{r}
-nfix.plot <- ggplot(data = nfix, aes(x = FireType, y = BNF, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen", "gold", "salmon")) + xlab("Fire Type") + ylab("nmol N Uptake/mg *DW/ hour") + theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")
+nfix.plotRX <- ggplot(data = nfix %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = BNF, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "gold")) + xlab("Fire Type") + ylab("nmol N Uptake/mg *DW/ hour") + theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
-nfix.plot
+nfix.plotWild <- ggplot(data = nfix %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = BNF, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("forestgreen", "salmon")) + xlab("Fire Type") + ylab("nmol N Uptake/mg *DW/ hour") + theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
 ```
 
 
@@ -571,20 +591,25 @@ adonis2(level3.dist ~ FireType, metadata)
 
 pairwise.adonis(level3.dist, metadata$FireType)
 
-function.nmds <- ggplot(NMDS, aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
-  stat_ellipse(size = 3) + theme_bw() + scale_color_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon"))  + theme(text=element_text(size=30)) + theme(legend.position = "bottom")+ annotate("text", x=0.1, y=0.20, label= "R2 = 0.15", size = 10) + annotate("text", x=0.1, y=0.18, label= "P = 0.244", size = 10) + annotate("text", x=0.1, y=0.16, label= "stress = 0.093", size = 10) + theme(text=element_text(size=30)) 
+function.nmdsRX <- ggplot(NMDS %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
+  stat_ellipse(size = 3) + theme_bw() + scale_color_manual(values = c("dodgerblue4", "gold"))  + theme(text=element_text(size=30)) + theme(legend.position = "bottom")
+
+function.nmdsWild <- ggplot(NMDS %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = MDS1, y = MDS2, col = FireType)) + geom_point() + 
+  stat_ellipse(size = 3) + theme_bw() + scale_color_manual(values = c("forestgreen", "salmon"))  + theme(text=element_text(size=30)) + theme(legend.position = "bottom")
+
+#annotate("text", x=0.1, y=0.20, label= "R2 = 0.15", size = 10) + annotate("text", x=0.1, y=0.18, label= "P = 0.244", size = 10) + annotate("text", x=0.1, y=0.16, label= "stress = 0.093", size = 10) + theme(text=element_text(size=30)) 
 
 
-pdf("figures/functionNMDSrevised.pdf", height = 12, width = 12)
-function.nmds
+pdf("figures/functionNMDSrevised.pdf", height = 12, width = 20)
+function.nmdsRX + function.nmdsWild
 dev.off()
 
 
 ```
 
 ```{r}
-pdf("figures/figure4.pdf", width = 12, height = 12)
-(richness.plot + diversity.plot)/(taxanmdsred + function.nmds)
+pdf("figures/figure4.pdf", width = 15, height = 30)
+(richness.plotRX + richness.plotWild)/(diversity.plotRX + diversity.plotWild)/(taxaNMDSRevisedRX + taxaNMDSRevisedWild)/(function.nmdsRX + function.nmdsWild)
 dev.off()
 ```
 
@@ -627,7 +652,7 @@ pdf("sigfunctions.pdf", height = 12, width = 12)
 ggplot(data = sub_df, aes(x = name, y = value, fill = FireType))+ 
   geom_bar(stat = "identity", position = "dodge") + 
   theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
-  scale_fill_manual(values = c("dodgerblue4", "forestgreen","gold", "salmon"))  + 
+  scale_fill_manual(values = c("forestgreen", "dodgerblue4", "gold", "salmon"))  + 
   theme(legend.position = "bottom") + labs(x = "Function", y = "Relative Abundance") + facet_grid(.~Site) +
   coord_flip()
 dev.off()
@@ -637,7 +662,7 @@ pdf("sigfunctions2012.pdf", height = 12, width = 12)
 ggplot(data = sub_df %>% filter(Site == "Ranch Canyon"), aes(x = name, y = value, fill = FireType))+ 
   geom_bar(stat = "identity", position = "dodge") + 
   theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
-  scale_fill_manual(values = c("dodgerblue4","salmon"))  + 
+  scale_fill_manual(values = c("forestgreen", "salmon"))  + 
   theme(legend.position = "bottom") + labs(x = "Function", y = "Relative Abundance")+
   coord_flip()
 dev.off()
@@ -706,23 +731,31 @@ summary(glht(chl, linfct = mcp(FireType = "Tukey")))
 ```
 
 ```{r}
-eps.genes <- ggplot(bsc.level3.all, aes(x = FireType, y = Exopolysaccharide_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "forestgreen", "gold", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")
+bsc.level3.all$FireType <- as.factor(bsc.level3.all$FireType)
+
+eps.genesRX <- ggplot(bsc.level3.all %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = Exopolysaccharide_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "gold"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+eps.genesWild <- ggplot(bsc.level3.all%>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType , y = Exopolysaccharide_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c( "forestgreen","salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
 ```
 
 ```{r}
-nfix.genes <- ggplot(bsc.level3.all, aes(x = FireType, y = Nitrogen_fixation, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen", "gold", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")
+nfix.genesRX <- ggplot(bsc.level3.all %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = Nitrogen_fixation, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4", "gold"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+nfix.genesWild <- ggplot(bsc.level3.all %>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = Nitrogen_fixation, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("forestgreen","salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20))+ labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
 ```
 
 ```{r}
-chl.genes <- ggplot(bsc.level3.all, aes(x = FireType, y = Chlorophyll_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","forestgreen" ,"gold", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")
+chl.genesRX <- ggplot(bsc.level3.all %>% filter(FireType %in% c("prescribed", "control2017")), aes(x = FireType, y = Chlorophyll_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("dodgerblue4","gold"))+ theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+chl.genesWild <- ggplot(bsc.level3.all%>% filter(FireType %in% c("wildfire", "control2012")), aes(x = FireType, y = Chlorophyll_Biosynthesis, fill = FireType)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("forestgreen", "salmon"))+ theme(legend.position = "none")+ theme(text=element_text(size=20)) + labs(x = "Fire Type")+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
 ```
 
 ```{r}
-pdf("figures/allfunctions.pdf", height = 15, width = 20)
-(chlplot + chl.genes)/(eps.plot + eps.genes)/(nfix.plot + nfix.genes)
+pdf("figures/allfunctions.pdf", height = 25, width = 25)
+(chlplotRX  + chlplotWild + chl.genesRX+ chl.genesWild)/(eps.plotRX +eps.plotWild + eps.genesRX + eps.genesWild)/(nfix.plotRX +nfix.plotWild + nfix.genesRX+ nfix.genesWild)
 dev.off()
 
 ```
